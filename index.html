@@ -68,10 +68,10 @@
     try {
       // Get all test users
       const NORMALIZED_SUPABASE_URL = window.SUPABASE_URL.replace(/\/rest\/v1\/?$/, "");
-      const supabase = window.supabase.createClient(NORMALIZED_SUPABASE_URL, window.SUPABASE_ANON_KEY);
+      const sb = window.supabase.createClient(NORMALIZED_SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
       // Get the most recent test user
-      const { data: users, error: userError } = await supabase
+      const { data: users, error: userError } = await sb
         .from("users")
         .select("*")
         .eq("display_name", "Test User ทดสอบ")
@@ -83,13 +83,11 @@
       }
 
       const user = users[0];
-      if (window.currentUser) {
-        window.currentUser = user;
-        sessionStorage.setItem("line_user_id", user.line_user_id);
-        if (window.hydrateAccounts) await window.hydrateAccounts();
-        if (window.render) window.render();
-        if (window.toast) window.toast("เข้าสู่ระบบทดสอบสำเร็จ ✓");
-      }
+      window.currentUser = user;
+      sessionStorage.setItem("line_user_id", user.line_user_id);
+      if (window.hydrateAccounts) await window.hydrateAccounts();
+      if (window.render) window.render();
+      if (window.toast) window.toast("เข้าสู่ระบบทดสอบสำเร็จ ✓");
     } catch (error) {
       console.error("Test login failed:", error);
       if (window.toast) window.toast("เข้าสู่ระบบทดสอบไม่สำเร็จ: " + error.message);

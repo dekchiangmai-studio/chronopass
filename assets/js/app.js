@@ -30,7 +30,7 @@ function updateAuthUI() {
     userLabel.style.display = "inline";
     userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
   } else {
-    loginBtn.style.display = "none";
+    loginBtn.style.display = "inline-flex";
     logoutBtn.style.display = "none";
     userLabel.style.display = "none";
     userLabel.textContent = "";
@@ -146,21 +146,16 @@ async function testLogin() {
 }
 
 function signInWithLine() {
-  // Check if in LINE app
-  if (isInLineApp() && window.liff && LIFF_ID) {
-    if (!liffReady) {
-      toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่");
-      return;
-    }
-
+  // LIFF SDK is available and initialized
+  if (window.liff && liffReady) {
     if (!window.liff.isLoggedIn()) {
       window.liff.login({
         redirectUri: window.location.href,
-        scope: "profile openid email",
       });
       return;
     }
 
+    // Already logged in via LIFF, get profile
     window.liff.getProfile().then(handleLiffProfile).catch((error) => {
       console.error(error);
       toast("ดึงข้อมูล LINE profile ไม่สำเร็จ");
@@ -168,7 +163,23 @@ function signInWithLine() {
     return;
   }
 
-  // Not in LINE app - offer test login
+  // LIFF not ready yet - try to init now
+  if (window.liff && LIFF_ID && !liffReady) {
+    toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่...");
+    window.liff.init({ liffId: LIFF_ID }).then(() => {
+      liffReady = true;
+      signInWithLine(); // retry after init
+    }).catch((err) => {
+      console.error("LIFF init failed on login attempt:", err);
+      // Fallback to test login
+      if (confirm("ไม่สามารถเชื่อมต่อ LINE LIFF ได้\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
+        testLogin();
+      }
+    });
+    return;
+  }
+
+  // No LIFF SDK at all - offer test login
   if (confirm("ต้องเปิดจาก LINE app สำหรับการใช้งานจริง\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
     testLogin();
   }
@@ -802,6 +813,7 @@ async function initApp() {
     uiLogoutBtn.addEventListener("click", signOut);
   }
 
+  // Restore session from sessionStorage
   const storedLineUserId = sessionStorage.getItem("line_user_id");
   if (storedLineUserId && supabase) {
     const { data, error } = await supabase
@@ -815,29 +827,31 @@ async function initApp() {
     }
   }
 
-  // Try LIFF only if in LINE app
-  if (isInLineApp() && window.liff && LIFF_ID) {
+  // Always try to init LIFF if SDK and LIFF_ID are available
+  // liff.init() MUST be called before liff.isInClient() or liff.isLoggedIn()
+  if (window.liff && LIFF_ID) {
     try {
       await window.liff.init({ liffId: LIFF_ID });
       liffReady = true;
+      console.log("LIFF initialized. isInClient:", window.liff.isInClient(), "isLoggedIn:", window.liff.isLoggedIn());
 
+      // Auto-login if LIFF session exists and we don't have a user yet
       if (window.liff.isLoggedIn() && !currentUser) {
-        const profile = await window.liff.getProfile();
-        await handleLiffProfile(profile);
+        try {
+          const profile = await window.liff.getProfile();
+          await handleLiffProfile(profile);
+        } catch (profileErr) {
+          console.error("Failed to get LIFF profile:", profileErr);
+        }
       }
     } catch (error) {
       console.error("LIFF init failed:", error);
-      if (!currentUser) {
-        toast("ไม่สามารถเริ่ม LINE LIFF ได้");
-      }
+      liffReady = false;
     }
   }
 
-  // If still not logged in, check for test login
-  if (!currentUser) {
-    updateAuthUI();
-  }
-
+  // Update UI regardless of login state
+  updateAuthUI();
   await hydrateAccounts();
   render();
   setInterval(render, 1000);
