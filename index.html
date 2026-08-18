@@ -95,23 +95,13 @@
   };
 
   // Show test login button if not in LINE app (wait for app.js to load)
+  // Show test login button as alternative (LINE login button is handled by app.js)
   window.addEventListener("load", function() {
     setTimeout(function() {
-      if (!window.isInLineApp()) {
-        const testBtn = document.getElementById("testLoginBtn");
-        const lineBtn = document.getElementById("lineLoginBtn");
-        if (testBtn && lineBtn) {
-          testBtn.style.display = "inline-flex";
-          testBtn.addEventListener("click", window.handleTestLogin);
-          lineBtn.addEventListener("click", function(e) {
-            if (!window.isInLineApp()) {
-              e.preventDefault();
-              if (confirm("ต้องเปิดจาก LINE app สำหรับการใช้งานจริง\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
-                window.handleTestLogin();
-              }
-            }
-          });
-        }
+      const testBtn = document.getElementById("testLoginBtn");
+      if (testBtn) {
+        testBtn.style.display = "inline-flex";
+        testBtn.addEventListener("click", window.handleTestLogin);
       }
     }, 500);
   });
