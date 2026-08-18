@@ -58,9 +58,9 @@ function updateAuthUI() {
     userLabel.style.display = "inline";
 
     if (currentUser.is_guest) {
-      userLabel.textContent = "💻 " + currentUser.display_name;
+      userLabel.textContent = currentUser.display_name;
     } else {
-      userLabel.textContent = "👤 " + (currentUser.display_name || currentUser.email || "LINE User");
+      userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
     }
 
     if (addBtn) addBtn.style.display = "inline-flex";
@@ -229,7 +229,7 @@ function loginAsGuest() {
 
   hydrateAccounts();
   render();
-  toast("เข้าสู่ระบบแบบ Guest (บันทึกเฉพาะในเครื่องนี้) ✓");
+  toast("เข้าสู่ระบบแบบ Guest (บันทึกเฉพาะในเครื่องนี้)");
 }
 
 // Sign out
@@ -598,14 +598,13 @@ function renderLoginScreen() {
   root.innerHTML = `
     <div class="auth-screen">
       <div class="auth-card">
-        <div class="auth-icon">🔐</div>
         <div class="auth-badge">LINE LOGIN</div>
         <h2>เข้าสู่ระบบเพื่อใช้งาน</h2>
         <p>เข้าสู่ระบบผ่าน LINE เพื่อซิงค์ข้อมูลข้ามอุปกรณ์<br>หรือเข้าใช้งานแบบ Guest เพื่อบันทึกเฉพาะในเครื่องนี้</p>
         <div class="auth-actions">
-          <button class="line-login-btn" type="button" onclick="signInWithLine()">🟢 เข้าสู่ระบบด้วย LINE</button>
+          <button class="line-login-btn" type="button" onclick="signInWithLine()">เข้าสู่ระบบด้วย LINE</button>
           <div class="auth-divider">— หรือ —</div>
-          <button class="auth-guest-btn" type="button" onclick="loginAsGuest()">💻 ใช้งานแบบ Guest (บันทึกเฉพาะในเครื่องนี้)</button>
+          <button class="auth-guest-btn" type="button" onclick="loginAsGuest()">ใช้งานแบบ Guest (บันทึกเฉพาะในเครื่องนี้)</button>
         </div>
       </div>
     </div>
@@ -625,14 +624,19 @@ function updateCountdowns() {
     if (!resetTime) return;
 
     const diff = resetTime - Date.now();
+    let targetText = "";
     if (diff <= 0) {
-      el.textContent = "พร้อมใช้ทันที";
+      targetText = "พร้อมใช้ทันที";
       if (el.dataset.wasWaiting === "true") {
         el.dataset.wasWaiting = "false";
         stateChanged = true;
       }
     } else {
-      el.textContent = `รีเซ็ตใน ${fmtDuration(diff)}`;
+      targetText = `รีเซ็ตใน ${fmtDuration(diff)}`;
+    }
+
+    if (el.textContent !== targetText) {
+      el.textContent = targetText;
     }
   });
 
@@ -731,7 +735,7 @@ function render() {
     sec.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <h2>${service}</h2>
-        <div style="color:var(--muted);font-size:13px">${all.length} บัญชี · 🟢 ${rdy} พร้อม · 🔴 ${wt} รอ</div>
+        <div style="color:var(--muted);font-size:13px">${all.length} บัญชี · พร้อม ${rdy} · รอ ${wt}</div>
       </div>
       <div class="grid">${list.map((a) => {
         const st = accountState(a);
@@ -753,7 +757,7 @@ function render() {
           <div class="actions">
             <button class="ghost" onclick="openEditModal(${a.id})">แก้ไข</button>
             ${st === "ready"
-              ? `<button class="primary" onclick="useAccount(${a.id})">ใช้บัญชีนี้</button>`
+              ? `<button class="primary" onclick="useAccount(${a.id})">หมดแล้ว</button>`
               : `<button onclick="toast('รีเซ็ต: '+new Date(${resetTimeMs}).toLocaleString('th-TH'))">ดูเวลารีเซ็ต</button>`
             }
           </div>
@@ -808,10 +812,12 @@ async function initApp() {
   // 3) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
   await initLiff();
 
+  let loggedInViaLiff = false;
   // 4) Auto-login from LIFF if not in guest mode and not restored from session
   if (!isGuest && liffReady && window.liff.isLoggedIn()) {
     if (!currentUser) {
       await handleLiffLogin();
+      loggedInViaLiff = true;
     }
   }
 
@@ -820,10 +826,12 @@ async function initApp() {
     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
   }
 
-  // 6) Render UI
-  updateAuthUI();
-  await hydrateAccounts();
-  render();
+  // 6) Render UI (if not already rendered by handleLiffLogin)
+  if (!loggedInViaLiff) {
+    updateAuthUI();
+    await hydrateAccounts();
+    render();
+  }
 
   // 7) Timer only updates countdown text (no DOM re-render = no blinking)
   setInterval(updateCountdowns, 1000);

@@ -25,25 +25,32 @@
   --transition: 0.2s ease;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after { 
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
 
 html, body {
   min-height: 100%;
   margin: 0;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #0b1020;
   background: linear-gradient(135deg, #0b1020, #0f172a 55%, #101827);
   color: var(--text);
   overflow-y: auto;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---- Layout ---- */
 .wrap {
   max-width: 1200px;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
   padding: 28px;
   display: flex;
@@ -278,7 +285,9 @@ button:active {
 }
 
 .stat {
+  background: #141c33;
   background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -289,6 +298,9 @@ button:active {
   justify-content: center;
   gap: 6px;
   transition: border-color var(--transition);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .stat:hover {
@@ -323,6 +335,7 @@ button:active {
 .toolbar select {
   width: 100%;
   max-width: 280px;
+  background: #141c33;
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--text);
@@ -348,6 +361,7 @@ button:active {
 }
 
 .filter-chip {
+  background: #141c33;
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--muted);
@@ -372,7 +386,6 @@ button:active {
 
 .section {
   margin-bottom: 24px;
-  animation: fadeUp 0.35s ease;
 }
 
 .section h2 {
@@ -381,7 +394,9 @@ button:active {
 }
 
 .card {
+  background: #141c33;
   background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -391,6 +406,9 @@ button:active {
   flex-direction: column;
   gap: 12px;
   transition: border-color var(--transition), transform var(--transition);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .card:hover {
@@ -447,12 +465,20 @@ button:active {
   margin-top: auto;
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
 }
 
 .actions button {
   font-size: 13px;
-  padding: 8px 14px;
+  padding: 9px 16px;
+  flex: 1;
+  text-align: center;
+  border-radius: 8px;
+}
+
+.actions button.ghost {
+  flex: 0 0 auto;
+  padding: 9px 14px;
 }
 
 /* ---- Empty state ---- */
