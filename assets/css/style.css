@@ -250,18 +250,23 @@ button:active {
   opacity: 0.6;
 }
 
-.auth-test-btn {
-  background: transparent;
-  border: 1px dashed rgba(151, 165, 193, 0.3);
-  color: var(--muted);
+.auth-guest-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  color: var(--text);
   font-size: 13px;
-  padding: 10px 20px;
-  border-radius: 10px;
+  font-weight: 600;
+  padding: 11px 22px;
+  border-radius: 12px;
+  transition: all var(--transition);
+  cursor: pointer;
 }
 
-.auth-test-btn:hover {
+.auth-guest-btn:hover {
+  background: rgba(125, 211, 252, 0.12);
   border-color: var(--accent);
   color: var(--accent);
+  transform: translateY(-1px);
 }
 
 /* ---- Stats ---- */

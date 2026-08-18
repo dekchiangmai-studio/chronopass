@@ -1,6 +1,6 @@
 /* ============================================
    ChronoPass — App Logic
-   LINE LIFF Login + Supabase
+   LINE LIFF Login + Supabase & Local Guest Mode
    ============================================ */
 
 // ---- Config ----
@@ -56,7 +56,13 @@ function updateAuthUI() {
     loginBtn.style.display = "none";
     logoutBtn.style.display = "inline-flex";
     userLabel.style.display = "inline";
-    userLabel.textContent = "👤 " + (currentUser.display_name || currentUser.email || "LINE User");
+
+    if (currentUser.is_guest) {
+      userLabel.textContent = "💻 " + currentUser.display_name;
+    } else {
+      userLabel.textContent = "👤 " + (currentUser.display_name || currentUser.email || "LINE User");
+    }
+
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
   } else {
@@ -115,7 +121,7 @@ async function getLiffProfile() {
 }
 
 async function ensureUserInDB(profile) {
-  if (!sb || !profile?.userId) return null;
+  if (!profile?.userId) return null;
 
   const payload = {
     line_user_id: String(profile.userId),
@@ -125,17 +131,26 @@ async function ensureUserInDB(profile) {
     status: "active",
   };
 
-  const { data, error } = await sb
-    .from("users")
-    .upsert(payload, { onConflict: "line_user_id" })
-    .select();
-
-  if (error) {
-    console.error("User upsert error:", error);
-    throw error;
+  if (!sb) {
+    return { id: profile.userId, ...payload };
   }
 
-  return data?.[0] || null;
+  try {
+    const { data, error } = await sb
+      .from("users")
+      .upsert(payload, { onConflict: "line_user_id" })
+      .select();
+
+    if (error) {
+      console.warn("Supabase user upsert notice (fallback to local user):", error);
+      return { id: profile.userId, ...payload };
+    }
+
+    return data?.[0] || { id: profile.userId, ...payload };
+  } catch (err) {
+    console.warn("Supabase request error:", err);
+    return { id: profile.userId, ...payload };
+  }
 }
 
 // Sign in with LINE (LIFF)
@@ -145,14 +160,15 @@ function signInWithLine() {
     return;
   }
 
+  // Clear guest mode if switching to LINE login
+  localStorage.removeItem("guest_mode");
+
   // LIFF is ready
   if (liffReady) {
     if (window.liff.isLoggedIn()) {
-      // Already logged in → fetch profile
       handleLiffLogin();
     } else {
-      // Redirect to LINE Login
-      window.liff.login({ redirectUri: window.location.href });
+      window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
     }
     return;
   }
@@ -161,9 +177,9 @@ function signInWithLine() {
   toast("กำลังเชื่อมต่อ LINE...");
   initLiff().then((ok) => {
     if (ok) {
-      signInWithLine(); // retry
+      signInWithLine();
     } else {
-      toast("ไม่สามารถเชื่อมต่อ LINE LIFF ได้ — ลอง Test Login");
+      toast("ไม่สามารถเชื่อมต่อ LINE LIFF ได้");
     }
   });
 }
@@ -174,50 +190,46 @@ async function handleLiffLogin() {
     if (!profile) throw new Error("ดึงข้อมูล LINE ไม่ได้");
 
     const user = await ensureUserInDB(profile);
-    if (!user) throw new Error("ไม่สามารถบันทึกผู้ใช้ในฐานข้อมูล");
+    if (!user) throw new Error("ไม่สามารถบันทึกผู้ใช้ได้");
 
     currentUser = user;
     sessionStorage.setItem("line_user_id", user.line_user_id);
+    sessionStorage.setItem("line_display_name", user.display_name || "");
+    localStorage.removeItem("guest_mode");
+
+    // Clear URL query parameters from LINE redirect
+    if (window.location.search) {
+      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+    }
+
     await hydrateAccounts();
     render();
-    toast("เข้าสู่ระบบสำเร็จ — " + user.display_name);
+    toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
   } catch (err) {
-    console.error("handleLiffLogin:", err);
+    console.error("handleLiffLogin error:", err);
     toast(err.message || "เข้าสู่ระบบไม่สำเร็จ");
   }
 }
 
-// Test login (for development outside LINE)
-async function testLogin() {
-  if (!sb) { toast("Supabase ไม่พร้อม"); return; }
+// ============================================
+// Guest Mode (Purely Local / Offline)
+// ============================================
 
-  try {
-    const testPayload = {
-      line_user_id: "test_user_dev",
-      display_name: "Test User ทดสอบ",
-      picture_url: null,
-      email: "test@example.com",
-      status: "active",
-    };
+function loginAsGuest() {
+  currentUser = {
+    id: "guest",
+    line_user_id: "guest_local",
+    display_name: "Guest (ในเครื่อง)",
+    is_guest: true,
+  };
 
-    const { data, error } = await sb
-      .from("users")
-      .upsert(testPayload, { onConflict: "line_user_id" })
-      .select();
+  localStorage.setItem("guest_mode", "true");
+  sessionStorage.removeItem("line_user_id");
+  sessionStorage.removeItem("line_display_name");
 
-    if (error) throw error;
-    if (!data?.[0]) throw new Error("ไม่สามารถสร้างผู้ใช้ทดสอบ");
-
-    currentUser = data[0];
-    sessionStorage.setItem("line_user_id", currentUser.line_user_id);
-    sessionStorage.setItem("test_login", "true");
-    await hydrateAccounts();
-    render();
-    toast("เข้าสู่ระบบทดสอบสำเร็จ ✓");
-  } catch (err) {
-    console.error("testLogin:", err);
-    toast("Test login ล้มเหลว: " + err.message);
-  }
+  hydrateAccounts();
+  render();
+  toast("เข้าสู่ระบบแบบ Guest (บันทึกเฉพาะในเครื่องนี้) ✓");
 }
 
 // Sign out
@@ -225,7 +237,8 @@ async function signOut() {
   currentUser = null;
   accounts = [];
   sessionStorage.removeItem("line_user_id");
-  sessionStorage.removeItem("test_login");
+  sessionStorage.removeItem("line_display_name");
+  localStorage.removeItem("guest_mode");
 
   if (window.liff && liffReady) {
     try {
@@ -244,30 +257,34 @@ async function signOut() {
 
 async function hydrateAccounts() {
   accounts = getLocal();
-  if (!sb || !currentUser) return;
 
-  const { data, error } = await sb
-    .from("accounts")
-    .select("*")
-    .eq("user_id", currentUser.id)
-    .order("created_at", { ascending: false });
+  // If Guest mode or no Supabase, only use localStorage
+  if (!sb || !currentUser || currentUser.is_guest) return;
 
-  if (error) { console.error("Load accounts:", error); return; }
+  try {
+    const { data, error } = await sb
+      .from("accounts")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: false });
 
-  if (Array.isArray(data) && data.length) {
-    accounts = data.map((r) => ({
-      id: Number(r.id),
-      service: r.service,
-      label: r.label || r.email,
-      email: r.email,
-      resetMode: r.reset_mode || "hours",
-      resetHours: Number(r.reset_hours || 6),
-      resetTime: r.reset_time || "06:00",
-      lastUsed: r.last_used ? Number(r.last_used) : null,
-      user_id: r.user_id,
-    }));
-  } else {
-    accounts = getLocal().filter((a) => a.user_id === currentUser.id || !a.user_id);
+    if (!error && Array.isArray(data) && data.length) {
+      accounts = data.map((r) => ({
+        id: Number(r.id),
+        service: r.service,
+        label: r.label || r.email,
+        email: r.email,
+        resetMode: r.reset_mode || "hours",
+        resetHours: Number(r.reset_hours || 6),
+        resetTime: r.reset_time || "06:00",
+        lastUsed: r.last_used ? Number(r.last_used) : null,
+        user_id: r.user_id,
+      }));
+    } else {
+      accounts = getLocal().filter((a) => a.user_id === currentUser.id || !a.user_id);
+    }
+  } catch (err) {
+    console.warn("Hydrate accounts error:", err);
   }
 
   localStorage.setItem(KEY, JSON.stringify(accounts));
@@ -275,22 +292,28 @@ async function hydrateAccounts() {
 
 async function saveAccounts() {
   localStorage.setItem(KEY, JSON.stringify(accounts));
-  if (!sb || !currentUser) return;
 
-  const rows = accounts.map((a) => ({
-    id: Number(a.id),
-    user_id: currentUser.id,
-    email: String(a.email || "").trim(),
-    label: String(a.label || a.email || "").trim(),
-    service: String(a.service || "Copilot"),
-    reset_mode: String(a.resetMode || "hours"),
-    reset_hours: Number(a.resetHours || 6),
-    reset_time: String(a.resetTime || "06:00"),
-    last_used: a.lastUsed ? Number(a.lastUsed) : null,
-  }));
+  // If Guest mode or no Supabase, never write to Supabase
+  if (!sb || !currentUser || currentUser.is_guest) return;
 
-  const { error } = await sb.from("accounts").upsert(rows, { onConflict: "id" });
-  if (error) console.error("Save accounts:", error);
+  try {
+    const rows = accounts.map((a) => ({
+      id: Number(a.id),
+      user_id: currentUser.id,
+      email: String(a.email || "").trim(),
+      label: String(a.label || a.email || "").trim(),
+      service: String(a.service || "Copilot"),
+      reset_mode: String(a.resetMode || "hours"),
+      reset_hours: Number(a.resetHours || 6),
+      reset_time: String(a.resetTime || "06:00"),
+      last_used: a.lastUsed ? Number(a.lastUsed) : null,
+    }));
+
+    const { error } = await sb.from("accounts").upsert(rows, { onConflict: "id" });
+    if (error) console.warn("Save accounts DB notice:", error);
+  } catch (err) {
+    console.warn("Save accounts DB error:", err);
+  }
 }
 
 // ---- Presets ----
@@ -364,13 +387,6 @@ function lastUsedText(a) {
   return a.lastUsed ? new Date(a.lastUsed).toLocaleString("th-TH") : "ยังไม่เคยใช้";
 }
 
-function statusText(a) {
-  const st = accountState(a);
-  if (st === "ready") return "พร้อมใช้";
-  const next = getNextReset(a, a.lastUsed);
-  return `รีเซ็ตใน ${fmtDuration(next.getTime() - Date.now())}`;
-}
-
 // ---- Actions ----
 function useAccount(id) {
   if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
@@ -388,8 +404,7 @@ function deleteAccount(id) {
   if (!t) return;
   accounts = accounts.filter((x) => x.id !== id);
 
-  // Also delete from Supabase
-  if (sb && currentUser) {
+  if (sb && currentUser && !currentUser.is_guest) {
     sb.from("accounts").delete().eq("id", id).then(({ error }) => {
       if (error) console.error("Delete from DB:", error);
     });
@@ -570,12 +585,15 @@ function openDeleteModal() {
 }
 
 // ============================================
-// Render
+// Render & Realtime Timers
 // ============================================
 
 function renderLoginScreen() {
   const root = document.getElementById("sections");
   if (!root) return;
+
+  // If already rendered, do nothing (prevents blinking)
+  if (root.querySelector(".auth-screen")) return;
 
   root.innerHTML = `
     <div class="auth-screen">
@@ -583,11 +601,11 @@ function renderLoginScreen() {
         <div class="auth-icon">🔐</div>
         <div class="auth-badge">LINE LOGIN</div>
         <h2>เข้าสู่ระบบเพื่อใช้งาน</h2>
-        <p>ระบบบังคับให้เข้าสู่ระบบผ่าน LINE ก่อนใช้งาน<br>กดปุ่มด้านล่างเพื่อเริ่มต้น</p>
+        <p>เข้าสู่ระบบผ่าน LINE เพื่อซิงค์ข้อมูลข้ามอุปกรณ์<br>หรือเข้าใช้งานแบบ Guest เพื่อบันทึกเฉพาะในเครื่องนี้</p>
         <div class="auth-actions">
           <button class="line-login-btn" type="button" onclick="signInWithLine()">🟢 เข้าสู่ระบบด้วย LINE</button>
           <div class="auth-divider">— หรือ —</div>
-          <button class="auth-test-btn" type="button" onclick="testLogin()">🧪 ทดสอบระบบ (Test Account)</button>
+          <button class="auth-guest-btn" type="button" onclick="loginAsGuest()">💻 ใช้งานแบบ Guest (บันทึกเฉพาะในเครื่องนี้)</button>
         </div>
       </div>
     </div>
@@ -596,6 +614,31 @@ function renderLoginScreen() {
   // Hide dashboard sections
   const ids = ["statsRow", "serviceOverview", "toolbarRow", "aiFilters"];
   ids.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
+}
+
+function updateCountdowns() {
+  if (!currentUser) return;
+
+  let stateChanged = false;
+  document.querySelectorAll("[data-reset-time]").forEach((el) => {
+    const resetTime = Number(el.dataset.resetTime);
+    if (!resetTime) return;
+
+    const diff = resetTime - Date.now();
+    if (diff <= 0) {
+      el.textContent = "พร้อมใช้ทันที";
+      if (el.dataset.wasWaiting === "true") {
+        el.dataset.wasWaiting = "false";
+        stateChanged = true;
+      }
+    } else {
+      el.textContent = `รีเซ็ตใน ${fmtDuration(diff)}`;
+    }
+  });
+
+  if (stateChanged) {
+    render();
+  }
 }
 
 function render() {
@@ -694,6 +737,8 @@ function render() {
         const st = accountState(a);
         const cls = st === "ready" ? "ready" : "waiting";
         const resetAt = a.lastUsed ? getNextReset(a, a.lastUsed) : null;
+        const resetTimeMs = resetAt ? resetAt.getTime() : 0;
+        const countText = resetAt ? `รีเซ็ตใน ${fmtDuration(resetTimeMs - Date.now())}` : "พร้อมใช้ทันที";
 
         return `<div class="card">
           <div class="top">
@@ -703,13 +748,13 @@ function render() {
           <div class="meta">
             ใช้ล่าสุด: ${lastUsedText(a)}<br>
             รอบรีเซ็ต: ${scheduleLabel(a)}<br>
-            <span class="count">${resetAt ? statusText(a) : "พร้อมใช้ทันที"}</span>
+            <span class="count" data-reset-time="${resetTimeMs}" data-was-waiting="${st === 'waiting'}">${countText}</span>
           </div>
           <div class="actions">
             <button class="ghost" onclick="openEditModal(${a.id})">แก้ไข</button>
             ${st === "ready"
               ? `<button class="primary" onclick="useAccount(${a.id})">ใช้บัญชีนี้</button>`
-              : `<button onclick="toast('รีเซ็ต: '+new Date(${resetAt?.getTime()}).toLocaleString('th-TH'))">ดูเวลารีเซ็ต</button>`
+              : `<button onclick="toast('รีเซ็ต: '+new Date(${resetTimeMs}).toLocaleString('th-TH'))">ดูเวลารีเซ็ต</button>`
             }
           </div>
         </div>`;
@@ -730,34 +775,58 @@ async function initApp() {
   document.getElementById("addBtn")?.addEventListener("click", openAddModal);
   document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
 
-  // 1) Restore session from sessionStorage
-  const storedId = sessionStorage.getItem("line_user_id");
-  if (storedId && sb) {
-    try {
-      const { data, error } = await sb
-        .from("users")
-        .select("*")
-        .eq("line_user_id", storedId)
-        .single();
-      if (!error && data) currentUser = data;
-    } catch (_) {}
+  // 1) Check Guest mode first
+  const isGuest = localStorage.getItem("guest_mode") === "true";
+  if (isGuest) {
+    currentUser = {
+      id: "guest",
+      line_user_id: "guest_local",
+      display_name: "Guest (ในเครื่อง)",
+      is_guest: true,
+    };
+  } else {
+    // 2) Restore LINE session from sessionStorage
+    const storedId = sessionStorage.getItem("line_user_id");
+    if (storedId) {
+      if (sb) {
+        try {
+          const { data, error } = await sb
+            .from("users")
+            .select("*")
+            .eq("line_user_id", storedId)
+            .single();
+          if (!error && data) currentUser = data;
+        } catch (_) {}
+      }
+      if (!currentUser) {
+        const cachedName = sessionStorage.getItem("line_display_name") || "LINE User";
+        currentUser = { id: storedId, line_user_id: storedId, display_name: cachedName };
+      }
+    }
   }
 
-  // 2) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
+  // 3) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
   await initLiff();
 
-  // 3) Auto-login from LIFF if not restored from session
-  if (liffReady && window.liff.isLoggedIn() && !currentUser) {
-    await handleLiffLogin();
+  // 4) Auto-login from LIFF if not in guest mode and not restored from session
+  if (!isGuest && liffReady && window.liff.isLoggedIn()) {
+    if (!currentUser) {
+      await handleLiffLogin();
+    }
   }
 
-  // 4) Render
+  // 5) Clean URL params if returning from LINE Login (e.g. ?code=...&state=...)
+  if (window.location.search && (window.location.search.includes("code=") || window.location.search.includes("liffClientId="))) {
+    window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+  }
+
+  // 6) Render UI
   updateAuthUI();
   await hydrateAccounts();
   render();
 
-  // Auto refresh every second for countdown timers
-  setInterval(render, 1000);
+  // 7) Timer only updates countdown text (no DOM re-render = no blinking)
+  setInterval(updateCountdowns, 1000);
 }
 
 // Boot
