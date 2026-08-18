@@ -14,7 +14,12 @@
       <div class="sub">ระบบติดตามสถานะและเวลารีเซ็ตบัญชี</div>
       <div class="brand-tagline">เช็กสถานะพร้อมใช้ รู้เวลารีเซ็ตล่วงหน้า</div>
     </div>
-    <div class="header-actions">
+    <div class="header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div id="authPanel" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button id="lineLoginBtn" class="primary" type="button">เข้าสู่ระบบด้วย LINE</button>
+        <span id="userLabel" style="display:none; font-size:12px; color:var(--muted);"></span>
+        <button id="logoutBtn" class="ghost" type="button" style="display:none;">ออกจากระบบ</button>
+      </div>
       <button class="primary" onclick="openAddModal()">เพิ่มบัญชีใหม่</button>
       <button class="danger" onclick="openDeleteModal()">ลบ</button>
     </div>
@@ -40,6 +45,18 @@
 
   <div id="sections"></div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  window.SUPABASE_URL = "https://irwqejdtwfgdouzyswbz.supabase.co";
+  window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlyd3FlamR0d2ZnZG91enlzd2J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwMjMxNjYsImV4cCI6MjEwMjU5OTE2Nn0.LVufLhShkVqqBvrApfYr9L7_Ygx_ItjGyYBLps5I-K8";
+  window.LIFF_ID = "2007981677-R4UeGoKy";
+  window.LINE_CLIENT_ID = "2007981677";
+  window.LINE_REDIRECT_URI = window.location.origin === "null"
+    ? "http://localhost:3000/callback.html"
+    : `${window.location.origin}/callback.html`;
+</script>
 
 <div id="actionModal" class="modal hidden" aria-hidden="true">
   <div class="modal-card">

@@ -1,9 +1,196 @@
 const KEY = "ai-account-tracker-v1";
+const SUPABASE_URL = (window.SUPABASE_URL || "").trim();
+const SUPABASE_ANON_KEY = (window.SUPABASE_ANON_KEY || "").trim();
+const LIFF_ID = (window.LIFF_ID || "").trim();
+const LINE_CLIENT_ID = (window.LINE_CLIENT_ID || "").trim();
+const LINE_REDIRECT_URI = (window.LINE_REDIRECT_URI || "").trim();
+const NORMALIZED_SUPABASE_URL = SUPABASE_URL.replace(/\/rest\/v1\/?$/, "");
+const supabase = NORMALIZED_SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase
+  ? window.supabase.createClient(NORMALIZED_SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
-let accounts = JSON.parse(localStorage.getItem(KEY) || "null") || [];
+let accounts = [];
+let currentUser = null;
+let liffReady = false;
 
-function save() {
+function getLocalAccounts() {
+  return JSON.parse(localStorage.getItem(KEY) || "null") || [];
+}
+
+function updateAuthUI() {
+  const loginBtn = document.getElementById("lineLoginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const userLabel = document.getElementById("userLabel");
+
+  if (!loginBtn || !logoutBtn || !userLabel) return;
+
+  if (currentUser) {
+    loginBtn.style.display = "none";
+    logoutBtn.style.display = "inline-flex";
+    userLabel.style.display = "inline";
+    userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
+  } else {
+    loginBtn.style.display = "inline-flex";
+    logoutBtn.style.display = "none";
+    userLabel.style.display = "none";
+    userLabel.textContent = "";
+  }
+}
+
+function getLiffDecodedToken() {
+  if (!window.liff || typeof window.liff.getDecodedIDToken !== "function") {
+    return null;
+  }
+
+  try {
+    return window.liff.getDecodedIDToken();
+  } catch (error) {
+    console.warn("Unable to decode LIFF ID token:", error);
+    return null;
+  }
+}
+
+async function ensureUserExistsFromLine(profile) {
+  if (!supabase) return null;
+
+  const decodedToken = getLiffDecodedToken();
+  const payload = {
+    line_user_id: String(profile.userId || profile.id || profile.sub || ""),
+    display_name: profile.displayName || "LINE User",
+    picture_url: profile.pictureUrl || null,
+    email: decodedToken?.email || profile.email || null,
+    status: "active",
+  };
+
+  if (!payload.line_user_id) {
+    throw new Error("LINE user id ไม่ถูกต้อง");
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .upsert(payload, { onConflict: "line_user_id" })
+    .select();
+
+  if (error) {
+    console.error("Supabase user upsert failed:", error);
+    throw error;
+  }
+
+  return data?.[0] || null;
+}
+
+async function handleLiffProfile(profile) {
+  try {
+    const user = await ensureUserExistsFromLine(profile);
+    if (!user) {
+      throw new Error("ไม่มีข้อมูลผู้ใช้ในตาราง users");
+    }
+
+    currentUser = user;
+    sessionStorage.setItem("line_user_id", user.line_user_id);
+    await hydrateAccounts();
+    render();
+    return true;
+  } catch (error) {
+    console.error(error);
+    toast(error.message || "เข้าสู่ระบบด้วย LIFF ไม่สำเร็จ");
+    return false;
+  }
+}
+
+function signInWithLine() {
+  if (!window.liff || !LIFF_ID) {
+    toast("กรุณาเปิดหน้าเว็บผ่าน LINE LIFF และกำหนด LIFF ID ก่อนใช้งาน");
+    return;
+  }
+
+  if (!liffReady) {
+    toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่");
+    return;
+  }
+
+  if (!window.liff.isLoggedIn()) {
+    window.liff.login({
+      redirectUri: window.location.href,
+      scope: "profile openid email",
+    });
+    return;
+  }
+
+  window.liff.getProfile().then(handleLiffProfile).catch((error) => {
+    console.error(error);
+    toast("ดึงข้อมูล LINE profile ไม่สำเร็จ");
+  });
+}
+
+async function signOut() {
+  currentUser = null;
+  accounts = [];
+  sessionStorage.removeItem("line_user_id");
+  updateAuthUI();
+  render();
+  toast("ออกจากระบบแล้ว");
+}
+
+async function hydrateAccounts() {
+  accounts = getLocalAccounts();
+
+  if (!supabase || !currentUser) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase load failed:", error);
+    return;
+  }
+
+  if (Array.isArray(data) && data.length) {
+    accounts = data.map((row) => ({
+      id: Number(row.id),
+      service: row.service,
+      label: row.label || row.email,
+      email: row.email,
+      resetMode: row.reset_mode || "hours",
+      resetHours: Number(row.reset_hours || 6),
+      resetTime: row.reset_time || "06:00",
+      lastUsed: row.last_used ? Number(row.last_used) : null,
+      user_id: row.user_id,
+    }));
+    localStorage.setItem(KEY, JSON.stringify(accounts));
+  } else {
+    accounts = getLocalAccounts().filter((account) => account.user_id === currentUser.id || !account.user_id);
+    localStorage.setItem(KEY, JSON.stringify(accounts));
+  }
+}
+
+async function save() {
   localStorage.setItem(KEY, JSON.stringify(accounts));
+
+  if (!supabase || !currentUser) return;
+
+  const rows = accounts.map((account) => ({
+    id: Number(account.id),
+    user_id: currentUser.id,
+    email: String(account.email || "").trim(),
+    label: String(account.label || account.email || "").trim(),
+    service: String(account.service || "Copilot"),
+    reset_mode: String(account.resetMode || "hours"),
+    reset_hours: Number(account.resetHours || 6),
+    reset_time: String(account.resetTime || "06:00"),
+    last_used: account.lastUsed ? Number(account.lastUsed) : null,
+  }));
+
+  const { error } = await supabase.from("accounts").upsert(rows, { onConflict: "id" });
+
+  if (error) {
+    console.error("Supabase save failed:", error);
+  }
 }
 
 function getPresetConfig(serviceName) {
@@ -127,6 +314,11 @@ function statusText(a) {
 }
 
 function useAccount(id) {
+  if (!currentUser) {
+    toast("กรุณาเข้าสู่ระบบก่อนใช้งานบัญชี");
+    return;
+  }
+
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
 
@@ -255,6 +447,11 @@ function saveEditedAccount(id) {
 }
 
 function addAccount() {
+  if (!currentUser) {
+    toast("กรุณาเข้าสู่ระบบด้วย LINE ก่อนเพิ่มบัญชี");
+    return;
+  }
+
   const email = document.getElementById("newEmail").value.trim();
   const selectedPresets = Array.from(document.querySelectorAll(".preset-item input:checked"))
     .map((checkbox) => checkbox.value);
@@ -291,6 +488,7 @@ function addAccount() {
       resetHours: config.resetHours,
       resetTime: config.resetTime,
       lastUsed: null,
+      user_id: currentUser?.id || null,
     };
   });
 
@@ -345,7 +543,65 @@ function deleteAccount(id) {
   toast(`ลบบัญชี ${target.label} แล้ว`);
 }
 
+function renderLoginScreen() {
+  const root = document.getElementById("sections");
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-badge">LINE LOGIN</div>
+        <h2>เข้าสู่ระบบเพื่อจัดการบัญชีของคุณ</h2>
+        <p>ติดตามสถานะรีเซ็ตบัญชีได้แบบเรียลไทม์ พร้อมข้อมูลที่แยกตามผู้ใช้</p>
+        <button id="loginCardButton" class="line-login-btn" type="button">เข้าสู่ระบบด้วย LINE</button>
+      </div>
+    </div>
+  `;
+
+  const cardLoginBtn = document.getElementById("loginCardButton");
+  if (cardLoginBtn) {
+    cardLoginBtn.addEventListener("click", signInWithLine);
+  }
+
+  const stats = document.querySelector(".stats");
+  if (stats) stats.style.display = "none";
+
+  const overview = document.getElementById("serviceOverview");
+  if (overview) overview.style.display = "none";
+
+  const toolbar = document.querySelector(".toolbar");
+  if (toolbar) toolbar.style.display = "none";
+
+  const filterRow = document.getElementById("aiFilters");
+  if (filterRow) filterRow.style.display = "none";
+}
+
 function render() {
+  updateAuthUI();
+
+  if (!currentUser) {
+    renderLoginScreen();
+    document.getElementById("total").textContent = "0";
+    document.getElementById("ready").textContent = "0";
+    document.getElementById("used").textContent = "0";
+    document.getElementById("waiting").textContent = "0";
+    document.getElementById("serviceOverview").innerHTML = "";
+    document.getElementById("aiFilters").innerHTML = '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>';
+    return;
+  }
+
+  const stats = document.querySelector(".stats");
+  if (stats) stats.style.display = "grid";
+
+  const overview = document.getElementById("serviceOverview");
+  if (overview) overview.style.display = "grid";
+
+  const toolbar = document.querySelector(".toolbar");
+  if (toolbar) toolbar.style.display = "flex";
+
+  const filterRow = document.getElementById("aiFilters");
+  if (filterRow) filterRow.style.display = "flex";
+
   const q = document.getElementById("search").value.toLowerCase().trim();
   const stf = document.getElementById("status").value;
   const serviceFilter = window.currentServiceFilter || "all";
@@ -358,20 +614,21 @@ function render() {
   });
 
   const services = [...new Set(accounts.map((a) => a.service))];
-  const filterRow = document.getElementById("aiFilters");
-  filterRow.innerHTML = [
-    '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>',
-    ...services.map((service) => `
-      <button class="filter-chip ${serviceFilter === service ? "active" : ""}" type="button" data-service="${service}">${service}</button>
-    `),
-  ].join("");
+  if (filterRow) {
+    filterRow.innerHTML = [
+      '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>',
+      ...services.map((service) => `
+        <button class="filter-chip ${serviceFilter === service ? "active" : ""}" type="button" data-service="${service}">${service}</button>
+      `),
+    ].join("");
 
-  filterRow.querySelectorAll(".filter-chip").forEach((button) => {
-    button.addEventListener("click", () => {
-      window.currentServiceFilter = button.dataset.service || "all";
-      render();
+    filterRow.querySelectorAll(".filter-chip").forEach((button) => {
+      button.addEventListener("click", () => {
+        window.currentServiceFilter = button.dataset.service || "all";
+        render();
+      });
     });
-  });
+  }
 
   const ready = accounts.filter((a) => state(a) === "ready").length;
   const waiting = accounts.length - ready;
@@ -390,7 +647,7 @@ function render() {
     })
     .join("");
 
-  if (!services.length) {
+  if (!services.length && filterRow) {
     filterRow.innerHTML = '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>';
   }
 
@@ -453,5 +710,51 @@ function render() {
   }
 }
 
-render();
-setInterval(render, 1000);
+async function initApp() {
+  const uiLoginBtn = document.getElementById("lineLoginBtn");
+  const uiLogoutBtn = document.getElementById("logoutBtn");
+
+  if (uiLoginBtn) {
+    uiLoginBtn.addEventListener("click", signInWithLine);
+  }
+
+  if (uiLogoutBtn) {
+    uiLogoutBtn.addEventListener("click", signOut);
+  }
+
+  const storedLineUserId = sessionStorage.getItem("line_user_id");
+  if (storedLineUserId && supabase) {
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("line_user_id", storedLineUserId)
+      .single();
+
+    if (!error && data) {
+      currentUser = data;
+    }
+  }
+
+  if (window.liff && LIFF_ID) {
+    try {
+      await window.liff.init({ liffId: LIFF_ID });
+      liffReady = true;
+
+      if (window.liff.isLoggedIn()) {
+        const profile = await window.liff.getProfile();
+        await handleLiffProfile(profile);
+      } else {
+        toast("กรุณาเข้าสู่ระบบด้วย LINE LIFF");
+      }
+    } catch (error) {
+      console.error("LIFF init failed:", error);
+      toast("ไม่สามารถเริ่ม LINE LIFF ได้");
+    }
+  }
+
+  await hydrateAccounts();
+  render();
+  setInterval(render, 1000);
+}
+
+initApp();
