@@ -1,444 +1,436 @@
-const KEY = "ai-account-tracker-v1";
-const SUPABASE_URL = (window.SUPABASE_URL || "").trim();
-const SUPABASE_ANON_KEY = (window.SUPABASE_ANON_KEY || "").trim();
-const LIFF_ID = (window.LIFF_ID || "").trim();
-const LINE_CLIENT_ID = (window.LINE_CLIENT_ID || "").trim();
-const LINE_REDIRECT_URI = (window.LINE_REDIRECT_URI || "").trim();
-const NORMALIZED_SUPABASE_URL = SUPABASE_URL.replace(/\/rest\/v1\/?$/, "");
-const supabase = NORMALIZED_SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase
-  ? window.supabase.createClient(NORMALIZED_SUPABASE_URL, SUPABASE_ANON_KEY)
+/* ============================================
+   ChronoPass — App Logic
+   LINE LIFF Login + Supabase
+   ============================================ */
+
+// ---- Config ----
+const CFG = window.APP_CONFIG || {};
+const LIFF_ID = (CFG.LIFF_ID || "").trim();
+const SUPABASE_URL = (CFG.SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "").trim();
+const SUPABASE_ANON_KEY = (CFG.SUPABASE_ANON_KEY || "").trim();
+const KEY = "chronopass-accounts-v1";
+
+// ---- Supabase client ----
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
+// ---- State ----
 let accounts = [];
 let currentUser = null;
 let liffReady = false;
+let currentServiceFilter = "all";
 
-function getLocalAccounts() {
-  return JSON.parse(localStorage.getItem(KEY) || "null") || [];
+// ============================================
+// Helpers
+// ============================================
+
+function getLocal() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  catch { return []; }
 }
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+// ============================================
+// Auth UI
+// ============================================
 
 function updateAuthUI() {
   const loginBtn = document.getElementById("lineLoginBtn");
   const logoutBtn = document.getElementById("logoutBtn");
   const userLabel = document.getElementById("userLabel");
+  const addBtn = document.getElementById("addBtn");
+  const deleteBtn = document.getElementById("deleteBtn");
 
-  if (!loginBtn || !logoutBtn || !userLabel) return;
+  if (!loginBtn) return;
 
   if (currentUser) {
     loginBtn.style.display = "none";
     logoutBtn.style.display = "inline-flex";
     userLabel.style.display = "inline";
-    userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
+    userLabel.textContent = "👤 " + (currentUser.display_name || currentUser.email || "LINE User");
+    if (addBtn) addBtn.style.display = "inline-flex";
+    if (deleteBtn) deleteBtn.style.display = "inline-flex";
   } else {
     loginBtn.style.display = "inline-flex";
     logoutBtn.style.display = "none";
     userLabel.style.display = "none";
     userLabel.textContent = "";
+    if (addBtn) addBtn.style.display = "none";
+    if (deleteBtn) deleteBtn.style.display = "none";
   }
 }
 
-function getLiffDecodedToken() {
-  if (!window.liff || typeof window.liff.getDecodedIDToken !== "function") {
-    return null;
+// ============================================
+// LINE LIFF
+// ============================================
+
+async function initLiff() {
+  if (!window.liff || !LIFF_ID) {
+    console.warn("LIFF SDK or LIFF_ID not available");
+    return false;
   }
 
   try {
-    return window.liff.getDecodedIDToken();
-  } catch (error) {
-    console.warn("Unable to decode LIFF ID token:", error);
+    await window.liff.init({ liffId: LIFF_ID });
+    liffReady = true;
+    console.log("LIFF ready — isInClient:", window.liff.isInClient(), "isLoggedIn:", window.liff.isLoggedIn());
+    return true;
+  } catch (err) {
+    console.error("LIFF init error:", err);
+    liffReady = false;
+    return false;
+  }
+}
+
+async function getLiffProfile() {
+  if (!window.liff || !liffReady || !window.liff.isLoggedIn()) return null;
+
+  try {
+    const profile = await window.liff.getProfile();
+    let email = null;
+    try {
+      const decoded = window.liff.getDecodedIDToken();
+      email = decoded?.email || null;
+    } catch (_) {}
+
+    return {
+      userId: profile.userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl || null,
+      email,
+    };
+  } catch (err) {
+    console.error("getProfile failed:", err);
     return null;
   }
 }
 
-async function ensureUserExistsFromLine(profile) {
-  if (!supabase) return null;
+async function ensureUserInDB(profile) {
+  if (!sb || !profile?.userId) return null;
 
-  const decodedToken = getLiffDecodedToken();
   const payload = {
-    line_user_id: String(profile.userId || profile.id || profile.sub || ""),
+    line_user_id: String(profile.userId),
     display_name: profile.displayName || "LINE User",
     picture_url: profile.pictureUrl || null,
-    email: decodedToken?.email || profile.email || null,
+    email: profile.email || null,
     status: "active",
   };
 
-  if (!payload.line_user_id) {
-    throw new Error("LINE user id ไม่ถูกต้อง");
-  }
-
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("users")
     .upsert(payload, { onConflict: "line_user_id" })
     .select();
 
   if (error) {
-    console.error("Supabase user upsert failed:", error);
+    console.error("User upsert error:", error);
     throw error;
   }
 
   return data?.[0] || null;
 }
 
-async function handleLiffProfile(profile) {
-  try {
-    const user = await ensureUserExistsFromLine(profile);
-    if (!user) {
-      throw new Error("ไม่มีข้อมูลผู้ใช้ในตาราง users");
+// Sign in with LINE (LIFF)
+function signInWithLine() {
+  if (!window.liff) {
+    toast("ไม่พบ LINE SDK — กรุณารีเฟรชหน้า");
+    return;
+  }
+
+  // LIFF is ready
+  if (liffReady) {
+    if (window.liff.isLoggedIn()) {
+      // Already logged in → fetch profile
+      handleLiffLogin();
+    } else {
+      // Redirect to LINE Login
+      window.liff.login({ redirectUri: window.location.href });
     }
+    return;
+  }
+
+  // LIFF not initialized yet — try now
+  toast("กำลังเชื่อมต่อ LINE...");
+  initLiff().then((ok) => {
+    if (ok) {
+      signInWithLine(); // retry
+    } else {
+      toast("ไม่สามารถเชื่อมต่อ LINE LIFF ได้ — ลอง Test Login");
+    }
+  });
+}
+
+async function handleLiffLogin() {
+  try {
+    const profile = await getLiffProfile();
+    if (!profile) throw new Error("ดึงข้อมูล LINE ไม่ได้");
+
+    const user = await ensureUserInDB(profile);
+    if (!user) throw new Error("ไม่สามารถบันทึกผู้ใช้ในฐานข้อมูล");
 
     currentUser = user;
     sessionStorage.setItem("line_user_id", user.line_user_id);
     await hydrateAccounts();
     render();
-    return true;
-  } catch (error) {
-    console.error(error);
-    toast(error.message || "เข้าสู่ระบบด้วย LIFF ไม่สำเร็จ");
-    return false;
+    toast("เข้าสู่ระบบสำเร็จ — " + user.display_name);
+  } catch (err) {
+    console.error("handleLiffLogin:", err);
+    toast(err.message || "เข้าสู่ระบบไม่สำเร็จ");
   }
 }
 
-function isInLineApp() {
-  // Check if running in LINE app by checking for LIFF SDK
-  return window.liff && typeof window.liff.isInClient === "function" ? window.liff.isInClient() : false;
-}
-
+// Test login (for development outside LINE)
 async function testLogin() {
-  try {
-    if (!supabase) {
-      throw new Error("Supabase is not configured");
-    }
+  if (!sb) { toast("Supabase ไม่พร้อม"); return; }
 
-    // Create or get test user
-    const testUser = {
-      line_user_id: "test_user_" + new Date().getTime(),
+  try {
+    const testPayload = {
+      line_user_id: "test_user_dev",
       display_name: "Test User ทดสอบ",
       picture_url: null,
       email: "test@example.com",
       status: "active",
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await sb
       .from("users")
-      .upsert(testUser, { onConflict: "line_user_id" })
+      .upsert(testPayload, { onConflict: "line_user_id" })
       .select();
 
-    if (error) {
-      throw error;
-    }
-
-    if (!data || !data[0]) {
-      throw new Error("ไม่สามารถสร้างผู้ใช้ทดสอบได้");
-    }
+    if (error) throw error;
+    if (!data?.[0]) throw new Error("ไม่สามารถสร้างผู้ใช้ทดสอบ");
 
     currentUser = data[0];
     sessionStorage.setItem("line_user_id", currentUser.line_user_id);
     sessionStorage.setItem("test_login", "true");
     await hydrateAccounts();
     render();
-    toast("เข้าสู่ระบบทดสอบสำเร็จ - (Test User)");
-    return true;
-  } catch (error) {
-    console.error("Test login failed:", error);
-    toast(error.message || "เข้าสู่ระบบทดสอบไม่สำเร็จ");
-    return false;
+    toast("เข้าสู่ระบบทดสอบสำเร็จ ✓");
+  } catch (err) {
+    console.error("testLogin:", err);
+    toast("Test login ล้มเหลว: " + err.message);
   }
 }
 
-function signInWithLine() {
-  // LIFF SDK is available and initialized
-  if (window.liff && liffReady) {
-    if (!window.liff.isLoggedIn()) {
-      window.liff.login({
-        redirectUri: window.location.href,
-      });
-      return;
-    }
-
-    // Already logged in via LIFF, get profile
-    window.liff.getProfile().then(handleLiffProfile).catch((error) => {
-      console.error(error);
-      toast("ดึงข้อมูล LINE profile ไม่สำเร็จ");
-    });
-    return;
-  }
-
-  // LIFF not ready yet - try to init now
-  if (window.liff && LIFF_ID && !liffReady) {
-    toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่...");
-    window.liff.init({ liffId: LIFF_ID }).then(() => {
-      liffReady = true;
-      signInWithLine(); // retry after init
-    }).catch((err) => {
-      console.error("LIFF init failed on login attempt:", err);
-      // Fallback to test login
-      if (confirm("ไม่สามารถเชื่อมต่อ LINE LIFF ได้\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
-        testLogin();
-      }
-    });
-    return;
-  }
-
-  // No LIFF SDK at all - offer test login
-  if (confirm("ต้องเปิดจาก LINE app สำหรับการใช้งานจริง\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
-    testLogin();
-  }
-}
-
+// Sign out
 async function signOut() {
   currentUser = null;
   accounts = [];
   sessionStorage.removeItem("line_user_id");
   sessionStorage.removeItem("test_login");
-  
-  // If in LINE app, also sign out from LIFF
-  if (window.liff && typeof window.liff.logout === "function" && isInLineApp()) {
+
+  if (window.liff && liffReady) {
     try {
-      window.liff.logout();
-    } catch (e) {
-      console.warn("LIFF logout failed:", e);
-    }
+      if (window.liff.isLoggedIn()) window.liff.logout();
+    } catch (_) {}
   }
-  
+
   updateAuthUI();
   render();
   toast("ออกจากระบบแล้ว");
 }
 
+// ============================================
+// Accounts — CRUD
+// ============================================
+
 async function hydrateAccounts() {
-  accounts = getLocalAccounts();
+  accounts = getLocal();
+  if (!sb || !currentUser) return;
 
-  if (!supabase || !currentUser) {
-    return;
-  }
-
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("accounts")
     .select("*")
     .eq("user_id", currentUser.id)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Supabase load failed:", error);
-    return;
-  }
+  if (error) { console.error("Load accounts:", error); return; }
 
   if (Array.isArray(data) && data.length) {
-    accounts = data.map((row) => ({
-      id: Number(row.id),
-      service: row.service,
-      label: row.label || row.email,
-      email: row.email,
-      resetMode: row.reset_mode || "hours",
-      resetHours: Number(row.reset_hours || 6),
-      resetTime: row.reset_time || "06:00",
-      lastUsed: row.last_used ? Number(row.last_used) : null,
-      user_id: row.user_id,
+    accounts = data.map((r) => ({
+      id: Number(r.id),
+      service: r.service,
+      label: r.label || r.email,
+      email: r.email,
+      resetMode: r.reset_mode || "hours",
+      resetHours: Number(r.reset_hours || 6),
+      resetTime: r.reset_time || "06:00",
+      lastUsed: r.last_used ? Number(r.last_used) : null,
+      user_id: r.user_id,
     }));
-    localStorage.setItem(KEY, JSON.stringify(accounts));
   } else {
-    accounts = getLocalAccounts().filter((account) => account.user_id === currentUser.id || !account.user_id);
-    localStorage.setItem(KEY, JSON.stringify(accounts));
+    accounts = getLocal().filter((a) => a.user_id === currentUser.id || !a.user_id);
   }
+
+  localStorage.setItem(KEY, JSON.stringify(accounts));
 }
 
-async function save() {
+async function saveAccounts() {
   localStorage.setItem(KEY, JSON.stringify(accounts));
+  if (!sb || !currentUser) return;
 
-  if (!supabase || !currentUser) return;
-
-  const rows = accounts.map((account) => ({
-    id: Number(account.id),
+  const rows = accounts.map((a) => ({
+    id: Number(a.id),
     user_id: currentUser.id,
-    email: String(account.email || "").trim(),
-    label: String(account.label || account.email || "").trim(),
-    service: String(account.service || "Copilot"),
-    reset_mode: String(account.resetMode || "hours"),
-    reset_hours: Number(account.resetHours || 6),
-    reset_time: String(account.resetTime || "06:00"),
-    last_used: account.lastUsed ? Number(account.lastUsed) : null,
+    email: String(a.email || "").trim(),
+    label: String(a.label || a.email || "").trim(),
+    service: String(a.service || "Copilot"),
+    reset_mode: String(a.resetMode || "hours"),
+    reset_hours: Number(a.resetHours || 6),
+    reset_time: String(a.resetTime || "06:00"),
+    last_used: a.lastUsed ? Number(a.lastUsed) : null,
   }));
 
-  const { error } = await supabase.from("accounts").upsert(rows, { onConflict: "id" });
-
-  if (error) {
-    console.error("Supabase save failed:", error);
-  }
+  const { error } = await sb.from("accounts").upsert(rows, { onConflict: "id" });
+  if (error) console.error("Save accounts:", error);
 }
 
-function getPresetConfig(serviceName) {
-  const lower = String(serviceName || "").toLowerCase();
+// ---- Presets ----
+const PRESETS = {
+  copilot:      { name: "Copilot",             resetMode: "monthly", resetHours: 720,  resetTime: "00:00", resetDay: 1, label: "Copilot · รายเดือน" },
+  antigravity:  { name: "Google Antigravity",   resetMode: "days",    resetHours: 168,  resetTime: "08:00", label: "Google Antigravity · 7 วัน" },
+  gemini:       { name: "Gemini",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Gemini · 24 ชม." },
+  claude:       { name: "Claude",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Claude · 24 ชม." },
+  chatgpt:      { name: "ChatGPT",              resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "ChatGPT · 24 ชม." },
+  perplexity:   { name: "Perplexity",           resetMode: "hours",   resetHours: 12,   resetTime: "00:00", label: "Perplexity · 12 ชม." },
+};
 
-  if (lower.includes("copilot")) {
-    return { resetMode: "monthly", resetHours: 24 * 30, resetTime: "00:00", resetDay: 1 };
+function getPreset(serviceName) {
+  const s = String(serviceName || "").toLowerCase();
+  for (const [key, preset] of Object.entries(PRESETS)) {
+    if (s.includes(key)) return preset;
   }
-
-  if (lower.includes("antigravity") || lower.includes("google ant")) {
-    return { resetMode: "days", resetHours: 7 * 24, resetTime: "08:00" };
-  }
-
-  if (lower.includes("gemini")) {
-    return { resetMode: "hours", resetHours: 24, resetTime: "00:00" };
-  }
-
-  if (lower.includes("claude")) {
-    return { resetMode: "hours", resetHours: 24, resetTime: "00:00" };
-  }
-
-  if (lower.includes("chatgpt")) {
-    return { resetMode: "hours", resetHours: 24, resetTime: "00:00" };
-  }
-
-  if (lower.includes("perplexity")) {
-    return { resetMode: "hours", resetHours: 12, resetTime: "00:00" };
-  }
-
   return { resetMode: "hours", resetHours: 6, resetTime: "06:00" };
 }
 
-function getNextResetTime(account, referenceTime) {
-  const ref = new Date(referenceTime);
-  const preset = getPresetConfig(account.service);
-  const { resetMode, resetHours } = preset;
+// ---- Reset time calculations ----
+function getNextReset(account, refTime) {
+  const ref = new Date(refTime);
+  const preset = getPreset(account.service);
+  const mode = preset.resetMode;
 
-  if (resetMode === "hours") {
-    const interval = (Number(resetHours) || 1) * 3600000;
+  if (mode === "hours" || mode === "days") {
+    const interval = (Number(preset.resetHours) || 1) * 3600000;
     const cycles = Math.floor((Date.now() - ref.getTime()) / interval) + 1;
     return new Date(ref.getTime() + cycles * interval);
   }
 
-  if (resetMode === "days") {
-    const interval = (Number(resetHours) || 1) * 3600000;
-    const cycles = Math.floor((Date.now() - ref.getTime()) / interval) + 1;
-    return new Date(ref.getTime() + cycles * interval);
-  }
-
-  if (resetMode === "monthly") {
+  if (mode === "monthly") {
     const day = Math.min(31, Math.max(1, Number(preset.resetDay) || 1));
-    let candidate = new Date(ref.getFullYear(), ref.getMonth(), day, 0, 0, 0, 0);
-
-    while (candidate.getTime() <= ref.getTime()) {
-      candidate = new Date(candidate.getFullYear(), candidate.getMonth() + 1, day, 0, 0, 0, 0);
+    let c = new Date(ref.getFullYear(), ref.getMonth(), day);
+    while (c.getTime() <= ref.getTime()) {
+      c = new Date(c.getFullYear(), c.getMonth() + 1, day);
     }
-
-    return candidate;
+    return c;
   }
 
   return new Date(ref.getTime() + 3600000);
 }
 
-function scheduleText(account) {
-  const preset = getPresetConfig(account.service);
-
-  if (preset.resetMode === "hours") {
-    return `${preset.resetHours || 1} ชม.`;
-  }
-
-  if (preset.resetMode === "days") {
-    return `${Math.round((preset.resetHours || 24) / 24)} วัน`;
-  }
-
-  if (preset.resetMode === "monthly") {
-    return "ทุกวันที่ 1 ของเดือน";
-  }
-
-  return "ตามกำหนดเวลา";
-}
-
-function state(a) {
+function accountState(a) {
   if (!a.lastUsed) return "ready";
-  const resetAt = getNextResetTime(a, a.lastUsed);
-  const now = Date.now();
-  return now >= resetAt.getTime() ? "ready" : "waiting";
+  return Date.now() >= getNextReset(a, a.lastUsed).getTime() ? "ready" : "waiting";
 }
 
-function fmtTime(ms) {
+function fmtDuration(ms) {
   if (ms <= 0) return "พร้อมใช้";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (days > 0) {
-    return `${days}วัน ${hours}ชม.`;
-  }
-
-  if (hours > 0) {
-    return `${hours}ชม. ${minutes}น.`;
-  }
-
-  return `${minutes}น. ${seconds}วิ`;
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}วัน ${h}ชม.`;
+  if (h > 0) return `${h}ชม. ${m}น.`;
+  return `${m}น. ${sec}วิ`;
 }
 
-function lastText(a) {
+function scheduleLabel(a) {
+  const p = getPreset(a.service);
+  if (p.resetMode === "hours") return `${p.resetHours} ชม.`;
+  if (p.resetMode === "days") return `${Math.round(p.resetHours / 24)} วัน`;
+  if (p.resetMode === "monthly") return "ทุกวันที่ 1";
+  return "ตามกำหนด";
+}
+
+function lastUsedText(a) {
   return a.lastUsed ? new Date(a.lastUsed).toLocaleString("th-TH") : "ยังไม่เคยใช้";
 }
 
 function statusText(a) {
-  const st = state(a);
+  const st = accountState(a);
   if (st === "ready") return "พร้อมใช้";
-  if (st === "waiting") {
-    const nextReset = getNextResetTime(a, a.lastUsed);
-    return `รีเซ็ตใน ${fmtTime(nextReset.getTime() - Date.now())}`;
-  }
-  return "ใช้แล้ว";
+  const next = getNextReset(a, a.lastUsed);
+  return `รีเซ็ตใน ${fmtDuration(next.getTime() - Date.now())}`;
 }
 
+// ---- Actions ----
 function useAccount(id) {
-  if (!currentUser) {
-    toast("กรุณาเข้าสู่ระบบก่อนใช้งานบัญชี");
-    return;
-  }
-
+  if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
-
-  if (state(a) !== "ready") {
-    toast("บัญชีนี้ยังไม่รีเซ็ต");
-    return;
-  }
-
+  if (accountState(a) !== "ready") { toast("บัญชีนี้ยังไม่รีเซ็ต"); return; }
   a.lastUsed = Date.now();
-  save();
+  saveAccounts();
   render();
-  toast(`${a.service} ${a.email} บันทึกการใช้งานแล้ว`);
+  toast(`${a.service} — ${a.email} บันทึกแล้ว`);
 }
 
-function toast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(window._t);
-  window._t = setTimeout(() => t.classList.remove("show"), 1800);
+function deleteAccount(id) {
+  const t = accounts.find((x) => x.id === id);
+  if (!t) return;
+  accounts = accounts.filter((x) => x.id !== id);
+
+  // Also delete from Supabase
+  if (sb && currentUser) {
+    sb.from("accounts").delete().eq("id", id).then(({ error }) => {
+      if (error) console.error("Delete from DB:", error);
+    });
+  }
+
+  saveAccounts();
+  render();
+  closeModal();
+  toast(`ลบ ${t.label} แล้ว`);
+}
+
+// ============================================
+// Modals
+// ============================================
+
+function closeModal() {
+  const m = document.getElementById("actionModal");
+  m.classList.add("hidden");
+  m.setAttribute("aria-hidden", "true");
 }
 
 function openAddModal() {
-  if (!currentUser) {
-    toast("กรุณาเข้าสู่ระบบก่อนเพิ่มบัญชี");
-    return;
-  }
+  if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
 
-  const modal = document.getElementById("actionModal");
+  const m = document.getElementById("actionModal");
   const body = document.getElementById("modalBody");
   const title = document.getElementById("modalTitle");
   title.textContent = "เพิ่มบัญชีใหม่";
+
   body.innerHTML = `
     <div class="form-grid">
       <div class="form-row">
         <label for="newEmail">อีเมลบัญชี</label>
-        <input id="newEmail" placeholder="อีเมลบัญชี" style="width:100%;">
+        <input id="newEmail" placeholder="example@email.com">
       </div>
       <div class="form-row">
-        <label>Preset</label>
+        <label>เลือกบริการ AI</label>
         <div class="preset-list">
-          <label class="preset-item"><input type="checkbox" value="copilot" checked> Copilot · 6 ชม.</label>
-          <label class="preset-item"><input type="checkbox" value="antigravity"> Google Antigravity · 7 วัน</label>
-          <label class="preset-item"><input type="checkbox" value="gemini"> Gemini · 24 ชม.</label>
-          <label class="preset-item"><input type="checkbox" value="claude"> Claude · 24 ชม.</label>
-          <label class="preset-item"><input type="checkbox" value="chatgpt"> ChatGPT · 24 ชม.</label>
-          <label class="preset-item"><input type="checkbox" value="perplexity"> Perplexity · 12 ชม.</label>
+          ${Object.entries(PRESETS).map(([k, v]) =>
+            `<label class="preset-item"><input type="checkbox" value="${k}" ${k === "copilot" ? "checked" : ""}> ${v.label}</label>`
+          ).join("")}
         </div>
       </div>
     </div>
@@ -447,163 +439,124 @@ function openAddModal() {
       <button type="button" class="primary" onclick="addAccount()">เพิ่มบัญชี</button>
     </div>
   `;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
-  setTimeout(() => document.getElementById("newEmail")?.focus(), 30);
+
+  m.classList.remove("hidden");
+  m.setAttribute("aria-hidden", "false");
+  setTimeout(() => document.getElementById("newEmail")?.focus(), 50);
 }
 
-function closeModal() {
-  const modal = document.getElementById("actionModal");
-  modal.classList.add("hidden");
-  modal.setAttribute("aria-hidden", "true");
+function addAccount() {
+  if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
+
+  const email = document.getElementById("newEmail").value.trim();
+  const selected = Array.from(document.querySelectorAll(".preset-item input:checked")).map((c) => c.value);
+
+  if (!email) { toast("กรุณากรอกอีเมล"); return; }
+  if (!selected.length) { toast("กรุณาเลือกบริการอย่างน้อย 1 ตัว"); return; }
+
+  const newList = selected.map((key) => {
+    const p = PRESETS[key] || PRESETS.copilot;
+    return {
+      id: Date.now() + Math.floor(Math.random() * 10000),
+      service: p.name,
+      label: email,
+      email,
+      resetMode: p.resetMode,
+      resetHours: p.resetHours,
+      resetTime: p.resetTime,
+      lastUsed: null,
+      user_id: currentUser.id,
+    };
+  });
+
+  accounts = [...newList, ...accounts];
+  saveAccounts();
+  render();
+  closeModal();
+  toast(`เพิ่ม ${newList.length} บัญชีสำหรับ ${email}`);
 }
 
 function openEditModal(id) {
-  const modal = document.getElementById("actionModal");
+  const a = accounts.find((x) => x.id === id);
+  if (!a) return;
+
+  const m = document.getElementById("actionModal");
   const body = document.getElementById("modalBody");
   const title = document.getElementById("modalTitle");
-  const account = accounts.find((item) => item.id === id);
-
-  if (!account) return;
-
   title.textContent = "แก้ไขบัญชี";
+
   body.innerHTML = `
     <div class="form-grid">
       <div class="form-row">
         <label for="editEmail">อีเมลบัญชี</label>
-        <input id="editEmail" placeholder="อีเมลบัญชี" value="${account.email}" style="width:100%;">
+        <input id="editEmail" value="${a.email}">
       </div>
       <div class="form-row">
-        <label for="editPreset">Preset</label>
-        <select id="editPreset" style="width:100%;">
-          <option value="copilot" ${account.service === "Copilot" ? "selected" : ""}>Copilot · 6 ชม.</option>
-          <option value="antigravity" ${account.service === "Google Antigravity" ? "selected" : ""}>Google Antigravity · 7 วัน</option>
-          <option value="gemini" ${account.service === "Gemini" ? "selected" : ""}>Gemini · 24 ชม.</option>
-          <option value="claude" ${account.service === "Claude" ? "selected" : ""}>Claude · 24 ชม.</option>
-          <option value="chatgpt" ${account.service === "ChatGPT" ? "selected" : ""}>ChatGPT · 24 ชม.</option>
-          <option value="perplexity" ${account.service === "Perplexity" ? "selected" : ""}>Perplexity · 12 ชม.</option>
+        <label for="editPreset">บริการ AI</label>
+        <select id="editPreset">
+          ${Object.entries(PRESETS).map(([k, v]) =>
+            `<option value="${k}" ${a.service === v.name ? "selected" : ""}>${v.label}</option>`
+          ).join("")}
         </select>
       </div>
     </div>
     <div class="modal-actions">
       <button type="button" class="ghost" onclick="closeModal()">ยกเลิก</button>
-      <button type="button" class="primary" onclick="saveEditedAccount(${id})">บันทึก</button>
+      <button type="button" class="primary" onclick="saveEdit(${id})">บันทึก</button>
     </div>
   `;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
-  setTimeout(() => document.getElementById("editEmail")?.focus(), 30);
+
+  m.classList.remove("hidden");
+  m.setAttribute("aria-hidden", "false");
+  setTimeout(() => document.getElementById("editEmail")?.focus(), 50);
 }
 
-function saveEditedAccount(id) {
-  const account = accounts.find((item) => item.id === id);
-  if (!account) return;
+function saveEdit(id) {
+  const a = accounts.find((x) => x.id === id);
+  if (!a) return;
 
   const email = document.getElementById("editEmail").value.trim();
-  const preset = document.getElementById("editPreset").value;
-  const serviceMap = { copilot: "Copilot", antigravity: "Google Antigravity", gemini: "Gemini", claude: "Claude", chatgpt: "ChatGPT", perplexity: "Perplexity" };
+  const key = document.getElementById("editPreset").value;
+  if (!email) { toast("กรุณากรอกอีเมล"); return; }
 
-  if (!email) {
-    toast("กรุณากรอกอีเมลบัญชี");
-    return;
-  }
+  const p = PRESETS[key] || PRESETS.copilot;
+  a.email = email;
+  a.label = email;
+  a.service = p.name;
+  a.resetMode = p.resetMode;
+  a.resetHours = p.resetHours;
+  a.resetTime = p.resetTime;
 
-  const nextService = serviceMap[preset] || "Copilot";
-  const config = getPresetConfig(nextService);
-
-  account.email = email;
-  account.label = email;
-  account.service = nextService;
-  account.resetMode = config.resetMode;
-  account.resetHours = config.resetHours;
-  account.resetTime = config.resetTime;
-
-  save();
+  saveAccounts();
   render();
   closeModal();
-  toast(`อัปเดตบัญชี ${nextService} แล้ว`);
-}
-
-function addAccount() {
-  if (!currentUser) {
-    toast("กรุณาเข้าสู่ระบบด้วย LINE ก่อนเพิ่มบัญชี");
-    return;
-  }
-
-  const email = document.getElementById("newEmail").value.trim();
-  const selectedPresets = Array.from(document.querySelectorAll(".preset-item input:checked"))
-    .map((checkbox) => checkbox.value);
-
-  const serviceMap = {
-    copilot: "Copilot",
-    antigravity: "Google Antigravity",
-    gemini: "Gemini",
-    claude: "Claude",
-    chatgpt: "ChatGPT",
-    perplexity: "Perplexity",
-  };
-
-  if (!email) {
-    toast("กรุณากรอกอีเมลบัญชี");
-    return;
-  }
-
-  if (!selectedPresets.length) {
-    toast("กรุณาเลือก Preset อย่างน้อย 1 ตัว");
-    return;
-  }
-
-  const newAccounts = selectedPresets.map((preset) => {
-    const service = serviceMap[preset] || "Copilot";
-    const config = getPresetConfig(service);
-
-    return {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      service,
-      label: email,
-      email,
-      resetMode: config.resetMode,
-      resetHours: config.resetHours,
-      resetTime: config.resetTime,
-      lastUsed: null,
-      user_id: currentUser?.id || null,
-    };
-  });
-
-  accounts = [...newAccounts, ...accounts];
-  save();
-  render();
-  closeModal();
-  toast(`เพิ่มบัญชี ${newAccounts.length} รายการให้ ${email} แล้ว`);
+  toast(`อัปเดต ${p.name} แล้ว`);
 }
 
 function openDeleteModal() {
-  if (!currentUser) {
-    toast("กรุณาเข้าสู่ระบบก่อนลบบัญชี");
-    return;
-  }
+  if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
 
-  const modal = document.getElementById("actionModal");
+  const m = document.getElementById("actionModal");
   const body = document.getElementById("modalBody");
   const title = document.getElementById("modalTitle");
   title.textContent = "ลบบัญชี";
 
   if (!accounts.length) {
     body.innerHTML = '<div class="empty">ยังไม่มีบัญชีให้ลบ</div>';
-    modal.classList.remove("hidden");
-    modal.setAttribute("aria-hidden", "false");
+    m.classList.remove("hidden");
+    m.setAttribute("aria-hidden", "false");
     return;
   }
 
   body.innerHTML = `
     <div class="delete-list">
-      ${accounts.map((account) => `
+      ${accounts.map((a) => `
         <div class="delete-item">
-          <div class="info">
-            <div class="email">${account.email}</div>
-            <div class="service">${account.service}</div>
+          <div>
+            <div class="email">${a.email}</div>
+            <div class="service">${a.service}</div>
           </div>
-          <button class="danger" type="button" onclick="deleteAccount(${account.id})">ลบ</button>
+          <button class="danger" type="button" onclick="deleteAccount(${a.id})">ลบ</button>
         </div>
       `).join("")}
     </div>
@@ -611,20 +564,14 @@ function openDeleteModal() {
       <button type="button" class="primary" onclick="closeModal()">ปิด</button>
     </div>
   `;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
+
+  m.classList.remove("hidden");
+  m.setAttribute("aria-hidden", "false");
 }
 
-function deleteAccount(id) {
-  const target = accounts.find((item) => item.id === id);
-  if (!target) return;
-
-  accounts = accounts.filter((item) => item.id !== id);
-  save();
-  render();
-  closeModal();
-  toast(`ลบบัญชี ${target.label} แล้ว`);
-}
+// ============================================
+// Render
+// ============================================
 
 function renderLoginScreen() {
   const root = document.getElementById("sections");
@@ -633,120 +580,95 @@ function renderLoginScreen() {
   root.innerHTML = `
     <div class="auth-screen">
       <div class="auth-card">
+        <div class="auth-icon">🔐</div>
         <div class="auth-badge">LINE LOGIN</div>
-        <h2>กำลังเข้าสู่ระบบ...</h2>
-        <p>ระบบบังคับให้เข้าสู่ระบบผ่าน LINE ก่อนใช้งาน</p>
+        <h2>เข้าสู่ระบบเพื่อใช้งาน</h2>
+        <p>ระบบบังคับให้เข้าสู่ระบบผ่าน LINE ก่อนใช้งาน<br>กดปุ่มด้านล่างเพื่อเริ่มต้น</p>
+        <div class="auth-actions">
+          <button class="line-login-btn" type="button" onclick="signInWithLine()">🟢 เข้าสู่ระบบด้วย LINE</button>
+          <div class="auth-divider">— หรือ —</div>
+          <button class="auth-test-btn" type="button" onclick="testLogin()">🧪 ทดสอบระบบ (Test Account)</button>
+        </div>
       </div>
     </div>
   `;
 
-  const headerActions = document.querySelector(".header-actions");
-  if (headerActions) headerActions.style.display = "none";
-
-  const stats = document.querySelector(".stats");
-  if (stats) stats.style.display = "none";
-
-  const overview = document.getElementById("serviceOverview");
-  if (overview) overview.style.display = "none";
-
-  const toolbar = document.querySelector(".toolbar");
-  if (toolbar) toolbar.style.display = "none";
-
-  const filterRow = document.getElementById("aiFilters");
-  if (filterRow) filterRow.style.display = "none";
+  // Hide dashboard sections
+  const ids = ["statsRow", "serviceOverview", "toolbarRow", "aiFilters"];
+  ids.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
 }
 
 function render() {
   updateAuthUI();
 
-  const addBtn = document.querySelector('.header-actions .primary');
-  const deleteBtn = document.querySelector('.header-actions .danger');
-
-  if (addBtn) addBtn.style.display = currentUser ? "inline-block" : "none";
-  if (deleteBtn) deleteBtn.style.display = currentUser ? "inline-block" : "none";
-
   if (!currentUser) {
     renderLoginScreen();
-    const headerActions = document.querySelector(".header-actions");
-    if (headerActions) headerActions.style.display = "none";
     document.getElementById("total").textContent = "0";
     document.getElementById("ready").textContent = "0";
     document.getElementById("used").textContent = "0";
     document.getElementById("waiting").textContent = "0";
-    document.getElementById("serviceOverview").innerHTML = "";
-    document.getElementById("aiFilters").innerHTML = '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>';
     return;
   }
 
-  const headerActions = document.querySelector(".header-actions");
-  if (headerActions) headerActions.style.display = "flex";
+  // Show dashboard sections
+  const show = { statsRow: "grid", serviceOverview: "grid", toolbarRow: "flex", aiFilters: "flex" };
+  Object.entries(show).forEach(([id, display]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
 
-  const stats = document.querySelector(".stats");
-  if (stats) stats.style.display = "grid";
-
-  const overview = document.getElementById("serviceOverview");
-  if (overview) overview.style.display = "grid";
-
-  const toolbar = document.querySelector(".toolbar");
-  if (toolbar) toolbar.style.display = "flex";
-
-  const filterRow = document.getElementById("aiFilters");
-  if (filterRow) filterRow.style.display = "flex";
-
-  const q = document.getElementById("search").value.toLowerCase().trim();
-  const stf = document.getElementById("status").value;
-  const serviceFilter = window.currentServiceFilter || "all";
+  // Filter
+  const q = (document.getElementById("search")?.value || "").toLowerCase().trim();
+  const stf = document.getElementById("status")?.value || "all";
 
   const filtered = accounts.filter((a) => {
     const hit = !q || `${a.email} ${a.label} ${a.service}`.toLowerCase().includes(q);
-    const s = state(a);
-    const status = !a.lastUsed ? "ready" : s === "ready" ? "used" : "waiting";
-    return hit && (serviceFilter === "all" || a.service === serviceFilter) && (stf === "all" || status === stf);
+    const st = accountState(a);
+    const statusCat = !a.lastUsed ? "ready" : st === "ready" ? "used" : "waiting";
+    return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || statusCat === stf);
   });
 
+  // Service chips
   const services = [...new Set(accounts.map((a) => a.service))];
+  const filterRow = document.getElementById("aiFilters");
   if (filterRow) {
     filterRow.innerHTML = [
-      '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>',
-      ...services.map((service) => `
-        <button class="filter-chip ${serviceFilter === service ? "active" : ""}" type="button" data-service="${service}">${service}</button>
-      `),
+      `<button class="filter-chip ${currentServiceFilter === "all" ? "active" : ""}" type="button" data-svc="all">ทั้งหมด</button>`,
+      ...services.map((s) =>
+        `<button class="filter-chip ${currentServiceFilter === s ? "active" : ""}" type="button" data-svc="${s}">${s}</button>`
+      ),
     ].join("");
 
-    filterRow.querySelectorAll(".filter-chip").forEach((button) => {
-      button.addEventListener("click", () => {
-        window.currentServiceFilter = button.dataset.service || "all";
+    filterRow.querySelectorAll(".filter-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        currentServiceFilter = btn.dataset.svc || "all";
         render();
       });
     });
   }
 
-  const ready = accounts.filter((a) => state(a) === "ready").length;
-  const waiting = accounts.length - ready;
+  // Stats
+  const readyCount = accounts.filter((a) => accountState(a) === "ready").length;
+  const waitCount = accounts.length - readyCount;
 
   document.getElementById("total").textContent = accounts.length;
-  document.getElementById("ready").textContent = ready;
-  document.getElementById("used").textContent = accounts.filter((a) => a.lastUsed && state(a) === "waiting").length;
-  document.getElementById("waiting").textContent = waiting;
+  document.getElementById("ready").textContent = readyCount;
+  document.getElementById("used").textContent = accounts.filter((a) => a.lastUsed && accountState(a) === "waiting").length;
+  document.getElementById("waiting").textContent = waitCount;
 
-  const serviceOverview = document.getElementById("serviceOverview");
-  serviceOverview.innerHTML = [...new Set(accounts.map((a) => a.service))]
-    .map((service) => {
-      const arr = accounts.filter((a) => a.service === service);
-      const r = arr.filter((a) => state(a) === "ready").length;
-      return `<div class="stat"><div class="n">${arr.length}</div><div class="l">${service} · พร้อมใช้ ${r}</div></div>`;
-    })
-    .join("");
-
-  if (!services.length && filterRow) {
-    filterRow.innerHTML = '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>';
+  // Service overview
+  const overview = document.getElementById("serviceOverview");
+  if (overview) {
+    overview.innerHTML = services.map((svc) => {
+      const arr = accounts.filter((a) => a.service === svc);
+      const r = arr.filter((a) => accountState(a) === "ready").length;
+      return `<div class="stat"><div class="n">${arr.length}</div><div class="l">${svc} · พร้อมใช้ ${r}</div></div>`;
+    }).join("");
   }
 
+  // Group by service
   const groups = {};
-  filtered.forEach((a) => {
-    groups[a.service] ??= [];
-    groups[a.service].push(a);
-  });
+  filtered.forEach((a) => { (groups[a.service] ??= []).push(a); });
 
   const root = document.getElementById("sections");
   root.innerHTML = "";
@@ -757,104 +679,86 @@ function render() {
   }
 
   for (const [service, list] of Object.entries(groups)) {
-    const allForService = accounts.filter((a) => a.service === service);
-    const readyForService = allForService.filter((a) => state(a) === "ready").length;
-    const waitingForService = allForService.length - readyForService;
+    const all = accounts.filter((a) => a.service === service);
+    const rdy = all.filter((a) => accountState(a) === "ready").length;
+    const wt = all.length - rdy;
 
     const sec = document.createElement("div");
     sec.className = "section";
-    sec.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-      <h2 style="margin:0">${service}</h2>
-      <div style="color:var(--muted);font-size:13px">${allForService.length} บัญชี · 🟢 ${readyForService} พร้อม · 🔴 ${waitingForService} รอ</div>
-    </div>
-    <div class="grid">${list
-      .map((a) => {
-        const st = state(a);
+    sec.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h2>${service}</h2>
+        <div style="color:var(--muted);font-size:13px">${all.length} บัญชี · 🟢 ${rdy} พร้อม · 🔴 ${wt} รอ</div>
+      </div>
+      <div class="grid">${list.map((a) => {
+        const st = accountState(a);
         const cls = st === "ready" ? "ready" : "waiting";
-        const resetAt = a.lastUsed ? getNextResetTime(a, a.lastUsed) : null;
+        const resetAt = a.lastUsed ? getNextReset(a, a.lastUsed) : null;
 
         return `<div class="card">
           <div class="top">
-            <div style="flex:1; min-width:0;">
-              <div class="name">${a.email}</div>
-            </div>
+            <div style="flex:1;min-width:0"><div class="name">${a.email}</div></div>
             <div class="pill ${cls}">${st === "ready" ? "พร้อมใช้" : "รอรีเซ็ต"}</div>
           </div>
           <div class="meta">
-            ใช้ล่าสุด: ${lastText(a)}<br>
-            รอบรีเซ็ต: ${scheduleText(a)} · ${a.resetTime || "00:00"}<br>
+            ใช้ล่าสุด: ${lastUsedText(a)}<br>
+            รอบรีเซ็ต: ${scheduleLabel(a)}<br>
             <span class="count">${resetAt ? statusText(a) : "พร้อมใช้ทันที"}</span>
           </div>
           <div class="actions">
             <button class="ghost" onclick="openEditModal(${a.id})">แก้ไข</button>
-            ${
-              st === "ready"
-                ? `<button class="primary" onclick="useAccount(${a.id})">ใช้บัญชีนี้</button>`
-                : `<button onclick="toast('รีเซ็ตเวลา '+new Date(${resetAt.getTime()}).toLocaleString('th-TH'))">ดูเวลารีเซ็ต</button>`
+            ${st === "ready"
+              ? `<button class="primary" onclick="useAccount(${a.id})">ใช้บัญชีนี้</button>`
+              : `<button onclick="toast('รีเซ็ต: '+new Date(${resetAt?.getTime()}).toLocaleString('th-TH'))">ดูเวลารีเซ็ต</button>`
             }
           </div>
         </div>`;
-      })
-      .join("")}</div>`;
-
+      }).join("")}</div>
+    `;
     root.appendChild(sec);
   }
 }
 
+// ============================================
+// Init
+// ============================================
+
 async function initApp() {
-  const uiLoginBtn = document.getElementById("lineLoginBtn");
-  const uiLogoutBtn = document.getElementById("logoutBtn");
+  // Wire up header buttons
+  document.getElementById("lineLoginBtn")?.addEventListener("click", signInWithLine);
+  document.getElementById("logoutBtn")?.addEventListener("click", signOut);
+  document.getElementById("addBtn")?.addEventListener("click", openAddModal);
+  document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
 
-  if (uiLoginBtn) {
-    uiLoginBtn.addEventListener("click", signInWithLine);
-  }
-
-  if (uiLogoutBtn) {
-    uiLogoutBtn.addEventListener("click", signOut);
-  }
-
-  // Restore session from sessionStorage
-  const storedLineUserId = sessionStorage.getItem("line_user_id");
-  if (storedLineUserId && supabase) {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("line_user_id", storedLineUserId)
-      .single();
-
-    if (!error && data) {
-      currentUser = data;
-    }
-  }
-
-  // Always try to init LIFF if SDK and LIFF_ID are available
-  // liff.init() MUST be called before liff.isInClient() or liff.isLoggedIn()
-  if (window.liff && LIFF_ID) {
+  // 1) Restore session from sessionStorage
+  const storedId = sessionStorage.getItem("line_user_id");
+  if (storedId && sb) {
     try {
-      await window.liff.init({ liffId: LIFF_ID });
-      liffReady = true;
-      console.log("LIFF initialized. isInClient:", window.liff.isInClient(), "isLoggedIn:", window.liff.isLoggedIn());
-
-      // Auto-login if LIFF session exists and we don't have a user yet
-      if (window.liff.isLoggedIn() && !currentUser) {
-        try {
-          const profile = await window.liff.getProfile();
-          await handleLiffProfile(profile);
-        } catch (profileErr) {
-          console.error("Failed to get LIFF profile:", profileErr);
-        }
-      }
-    } catch (error) {
-      console.error("LIFF init failed:", error);
-      liffReady = false;
-    }
+      const { data, error } = await sb
+        .from("users")
+        .select("*")
+        .eq("line_user_id", storedId)
+        .single();
+      if (!error && data) currentUser = data;
+    } catch (_) {}
   }
 
-  // Update UI regardless of login state
+  // 2) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
+  await initLiff();
+
+  // 3) Auto-login from LIFF if not restored from session
+  if (liffReady && window.liff.isLoggedIn() && !currentUser) {
+    await handleLiffLogin();
+  }
+
+  // 4) Render
   updateAuthUI();
   await hydrateAccounts();
   render();
+
+  // Auto refresh every second for countdown timers
   setInterval(render, 1000);
 }
 
+// Boot
 initApp();
