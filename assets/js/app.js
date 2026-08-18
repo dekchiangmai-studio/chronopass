@@ -30,7 +30,7 @@ function updateAuthUI() {
     userLabel.style.display = "inline";
     userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
   } else {
-    loginBtn.style.display = "inline-flex";
+    loginBtn.style.display = "none";
     logoutBtn.style.display = "none";
     userLabel.style.display = "none";
     userLabel.textContent = "";
@@ -100,7 +100,7 @@ async function handleLiffProfile(profile) {
 
 function signInWithLine() {
   if (!window.liff || !LIFF_ID) {
-    toast("กรุณาเปิดหน้าเว็บผ่าน LINE LIFF และกำหนด LIFF ID ก่อนใช้งาน");
+    toast("เปิดจาก LINE LIFF เท่านั้น: ต้องเปิดใน LINE app หรือ URL ที่รองรับ LIFF");
     return;
   }
 
@@ -342,6 +342,11 @@ function toast(msg) {
 }
 
 function openAddModal() {
+  if (!currentUser) {
+    toast("กรุณาเข้าสู่ระบบก่อนเพิ่มบัญชี");
+    return;
+  }
+
   const modal = document.getElementById("actionModal");
   const body = document.getElementById("modalBody");
   const title = document.getElementById("modalTitle");
@@ -500,6 +505,11 @@ function addAccount() {
 }
 
 function openDeleteModal() {
+  if (!currentUser) {
+    toast("กรุณาเข้าสู่ระบบก่อนลบบัญชี");
+    return;
+  }
+
   const modal = document.getElementById("actionModal");
   const body = document.getElementById("modalBody");
   const title = document.getElementById("modalTitle");
@@ -551,17 +561,14 @@ function renderLoginScreen() {
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-badge">LINE LOGIN</div>
-        <h2>เข้าสู่ระบบเพื่อจัดการบัญชีของคุณ</h2>
-        <p>ติดตามสถานะรีเซ็ตบัญชีได้แบบเรียลไทม์ พร้อมข้อมูลที่แยกตามผู้ใช้</p>
-        <button id="loginCardButton" class="line-login-btn" type="button">เข้าสู่ระบบด้วย LINE</button>
+        <h2>กำลังเข้าสู่ระบบ...</h2>
+        <p>ระบบบังคับให้เข้าสู่ระบบผ่าน LINE ก่อนใช้งาน</p>
       </div>
     </div>
   `;
 
-  const cardLoginBtn = document.getElementById("loginCardButton");
-  if (cardLoginBtn) {
-    cardLoginBtn.addEventListener("click", signInWithLine);
-  }
+  const headerActions = document.querySelector(".header-actions");
+  if (headerActions) headerActions.style.display = "none";
 
   const stats = document.querySelector(".stats");
   if (stats) stats.style.display = "none";
@@ -579,8 +586,16 @@ function renderLoginScreen() {
 function render() {
   updateAuthUI();
 
+  const addBtn = document.querySelector('.header-actions .primary');
+  const deleteBtn = document.querySelector('.header-actions .danger');
+
+  if (addBtn) addBtn.style.display = currentUser ? "inline-block" : "none";
+  if (deleteBtn) deleteBtn.style.display = currentUser ? "inline-block" : "none";
+
   if (!currentUser) {
     renderLoginScreen();
+    const headerActions = document.querySelector(".header-actions");
+    if (headerActions) headerActions.style.display = "none";
     document.getElementById("total").textContent = "0";
     document.getElementById("ready").textContent = "0";
     document.getElementById("used").textContent = "0";
@@ -589,6 +604,9 @@ function render() {
     document.getElementById("aiFilters").innerHTML = '<button class="filter-chip active" type="button" data-service="all">ทั้งหมด</button>';
     return;
   }
+
+  const headerActions = document.querySelector(".header-actions");
+  if (headerActions) headerActions.style.display = "flex";
 
   const stats = document.querySelector(".stats");
   if (stats) stats.style.display = "grid";
@@ -735,21 +753,30 @@ async function initApp() {
     }
   }
 
-  if (window.liff && LIFF_ID) {
-    try {
-      await window.liff.init({ liffId: LIFF_ID });
-      liffReady = true;
+  if (!window.liff || !LIFF_ID) {
+    renderLoginScreen();
+    toast("ต้องเปิดจาก LINE LIFF เท่านั้น");
+    return;
+  }
 
-      if (window.liff.isLoggedIn()) {
-        const profile = await window.liff.getProfile();
-        await handleLiffProfile(profile);
-      } else {
-        toast("กรุณาเข้าสู่ระบบด้วย LINE LIFF");
-      }
-    } catch (error) {
-      console.error("LIFF init failed:", error);
-      toast("ไม่สามารถเริ่ม LINE LIFF ได้");
+  try {
+    await window.liff.init({ liffId: LIFF_ID });
+    liffReady = true;
+
+    if (window.liff.isLoggedIn()) {
+      const profile = await window.liff.getProfile();
+      await handleLiffProfile(profile);
+    } else {
+      window.liff.login({
+        redirectUri: window.location.href,
+        scope: "profile openid email",
+      });
     }
+  } catch (error) {
+    console.error("LIFF init failed:", error);
+    renderLoginScreen();
+    toast("ไม่สามารถเริ่ม LINE LIFF ได้ กรุณาเปิดจาก LINE app / LIFF URL");
+    return;
   }
 
   await hydrateAccounts();
