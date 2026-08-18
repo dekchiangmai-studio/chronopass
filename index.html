@@ -17,6 +17,7 @@
     <div class="header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
       <div id="authPanel" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <button id="lineLoginBtn" class="primary" type="button">เข้าสู่ระบบด้วย LINE</button>
+        <button id="testLoginBtn" class="primary" type="button" style="display:none;">🧪 ทดสอบ</button>
         <span id="userLabel" style="display:none; font-size:12px; color:var(--muted);"></span>
         <button id="logoutBtn" class="ghost" type="button" style="display:none;">ออกจากระบบ</button>
       </div>
@@ -56,6 +57,66 @@
   window.LINE_REDIRECT_URI = window.location.origin === "null"
     ? "http://localhost:3000/callback.html"
     : `${window.location.origin}/callback.html`;
+
+  // Helper to check if running in LINE app
+  window.isInLineApp = function() {
+    return window.liff && typeof window.liff.isInClient === "function" ? window.liff.isInClient() : false;
+  };
+
+  // Test login handler
+  window.handleTestLogin = async function() {
+    try {
+      // Get all test users
+      const NORMALIZED_SUPABASE_URL = window.SUPABASE_URL.replace(/\/rest\/v1\/?$/, "");
+      const supabase = window.supabase.createClient(NORMALIZED_SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+      // Get the most recent test user
+      const { data: users, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("display_name", "Test User ทดสอบ")
+        .order("id", { ascending: false })
+        .limit(1);
+
+      if (userError || !users || users.length === 0) {
+        throw new Error("No test user found");
+      }
+
+      const user = users[0];
+      if (window.currentUser) {
+        window.currentUser = user;
+        sessionStorage.setItem("line_user_id", user.line_user_id);
+        if (window.hydrateAccounts) await window.hydrateAccounts();
+        if (window.render) window.render();
+        if (window.toast) window.toast("เข้าสู่ระบบทดสอบสำเร็จ ✓");
+      }
+    } catch (error) {
+      console.error("Test login failed:", error);
+      if (window.toast) window.toast("เข้าสู่ระบบทดสอบไม่สำเร็จ: " + error.message);
+    }
+  };
+
+  // Show test login button if not in LINE app (wait for app.js to load)
+  window.addEventListener("load", function() {
+    setTimeout(function() {
+      if (!window.isInLineApp()) {
+        const testBtn = document.getElementById("testLoginBtn");
+        const lineBtn = document.getElementById("lineLoginBtn");
+        if (testBtn && lineBtn) {
+          testBtn.style.display = "inline-flex";
+          testBtn.addEventListener("click", window.handleTestLogin);
+          lineBtn.addEventListener("click", function(e) {
+            if (!window.isInLineApp()) {
+              e.preventDefault();
+              if (confirm("ต้องเปิดจาก LINE app สำหรับการใช้งานจริง\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
+                window.handleTestLogin();
+              }
+            }
+          });
+        }
+      }
+    }, 500);
+  });
 </script>
 
 <div id="actionModal" class="modal hidden" aria-hidden="true">

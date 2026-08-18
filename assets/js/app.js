@@ -98,35 +98,97 @@ async function handleLiffProfile(profile) {
   }
 }
 
+function isInLineApp() {
+  // Check if running in LINE app by checking for LIFF SDK
+  return window.liff && typeof window.liff.isInClient === "function" ? window.liff.isInClient() : false;
+}
+
+async function testLogin() {
+  try {
+    if (!supabase) {
+      throw new Error("Supabase is not configured");
+    }
+
+    // Create or get test user
+    const testUser = {
+      line_user_id: "test_user_" + new Date().getTime(),
+      display_name: "Test User ทดสอบ",
+      picture_url: null,
+      email: "test@example.com",
+      status: "active",
+    };
+
+    const { data, error } = await supabase
+      .from("users")
+      .upsert(testUser, { onConflict: "line_user_id" })
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || !data[0]) {
+      throw new Error("ไม่สามารถสร้างผู้ใช้ทดสอบได้");
+    }
+
+    currentUser = data[0];
+    sessionStorage.setItem("line_user_id", currentUser.line_user_id);
+    sessionStorage.setItem("test_login", "true");
+    await hydrateAccounts();
+    render();
+    toast("เข้าสู่ระบบทดสอบสำเร็จ - (Test User)");
+    return true;
+  } catch (error) {
+    console.error("Test login failed:", error);
+    toast(error.message || "เข้าสู่ระบบทดสอบไม่สำเร็จ");
+    return false;
+  }
+}
+
 function signInWithLine() {
-  if (!window.liff || !LIFF_ID) {
-    toast("เปิดจาก LINE LIFF เท่านั้น: ต้องเปิดใน LINE app หรือ URL ที่รองรับ LIFF");
-    return;
-  }
+  // Check if in LINE app
+  if (isInLineApp() && window.liff && LIFF_ID) {
+    if (!liffReady) {
+      toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่");
+      return;
+    }
 
-  if (!liffReady) {
-    toast("กำลังเริ่มต้น LINE LIFF กรุณารอสักครู่");
-    return;
-  }
+    if (!window.liff.isLoggedIn()) {
+      window.liff.login({
+        redirectUri: window.location.href,
+        scope: "profile openid email",
+      });
+      return;
+    }
 
-  if (!window.liff.isLoggedIn()) {
-    window.liff.login({
-      redirectUri: window.location.href,
-      scope: "profile openid email",
+    window.liff.getProfile().then(handleLiffProfile).catch((error) => {
+      console.error(error);
+      toast("ดึงข้อมูล LINE profile ไม่สำเร็จ");
     });
     return;
   }
 
-  window.liff.getProfile().then(handleLiffProfile).catch((error) => {
-    console.error(error);
-    toast("ดึงข้อมูล LINE profile ไม่สำเร็จ");
-  });
+  // Not in LINE app - offer test login
+  if (confirm("ต้องเปิดจาก LINE app สำหรับการใช้งานจริง\n\nต้องการใช้ Test Account เพื่อทดสอบหรือไม่?")) {
+    testLogin();
+  }
 }
 
 async function signOut() {
   currentUser = null;
   accounts = [];
   sessionStorage.removeItem("line_user_id");
+  sessionStorage.removeItem("test_login");
+  
+  // If in LINE app, also sign out from LIFF
+  if (window.liff && typeof window.liff.logout === "function" && isInLineApp()) {
+    try {
+      window.liff.logout();
+    } catch (e) {
+      console.warn("LIFF logout failed:", e);
+    }
+  }
+  
   updateAuthUI();
   render();
   toast("ออกจากระบบแล้ว");
@@ -753,30 +815,27 @@ async function initApp() {
     }
   }
 
-  if (!window.liff || !LIFF_ID) {
-    renderLoginScreen();
-    toast("ต้องเปิดจาก LINE LIFF เท่านั้น");
-    return;
+  // Try LIFF only if in LINE app
+  if (isInLineApp() && window.liff && LIFF_ID) {
+    try {
+      await window.liff.init({ liffId: LIFF_ID });
+      liffReady = true;
+
+      if (window.liff.isLoggedIn() && !currentUser) {
+        const profile = await window.liff.getProfile();
+        await handleLiffProfile(profile);
+      }
+    } catch (error) {
+      console.error("LIFF init failed:", error);
+      if (!currentUser) {
+        toast("ไม่สามารถเริ่ม LINE LIFF ได้");
+      }
+    }
   }
 
-  try {
-    await window.liff.init({ liffId: LIFF_ID });
-    liffReady = true;
-
-    if (window.liff.isLoggedIn()) {
-      const profile = await window.liff.getProfile();
-      await handleLiffProfile(profile);
-    } else {
-      window.liff.login({
-        redirectUri: window.location.href,
-        scope: "profile openid email",
-      });
-    }
-  } catch (error) {
-    console.error("LIFF init failed:", error);
-    renderLoginScreen();
-    toast("ไม่สามารถเริ่ม LINE LIFF ได้ กรุณาเปิดจาก LINE app / LIFF URL");
-    return;
+  // If still not logged in, check for test login
+  if (!currentUser) {
+    updateAuthUI();
   }
 
   await hydrateAccounts();
