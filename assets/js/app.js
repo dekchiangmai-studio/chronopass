@@ -39,6 +39,16 @@ function toast(msg) {
   window._toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
+// Email matching is case-insensitive, consistent with the database constraint.
+function accountKey(email, service) {
+  return `${String(email || "").trim().toLowerCase()}::${String(service || "").trim().toLowerCase()}`;
+}
+
+function hasDuplicateAccount(email, service, excludedId = null) {
+  const key = accountKey(email, service);
+  return accounts.some((account) => account.id !== excludedId && accountKey(account.email, account.service) === key);
+}
+
 // ============================================
 // Auth UI
 // ============================================
@@ -469,6 +479,14 @@ function addAccount() {
   if (!email) { toast("กรุณากรอกอีเมล"); return; }
   if (!selected.length) { toast("กรุณาเลือกบริการอย่างน้อย 1 ตัว"); return; }
 
+  const duplicate = selected
+    .map((key) => (PRESETS[key] || PRESETS.copilot).name)
+    .find((service) => hasDuplicateAccount(email, service));
+  if (duplicate) {
+    toast(`มีบัญชี ${duplicate} สำหรับอีเมลนี้อยู่แล้ว`);
+    return;
+  }
+
   const newList = selected.map((key) => {
     const p = PRESETS[key] || PRESETS.copilot;
     return {
@@ -535,6 +553,11 @@ function saveEdit(id) {
   if (!email) { toast("กรุณากรอกอีเมล"); return; }
 
   const p = PRESETS[key] || PRESETS.copilot;
+  if (hasDuplicateAccount(email, p.name, id)) {
+    toast(`มีบัญชี ${p.name} สำหรับอีเมลนี้อยู่แล้ว`);
+    return;
+  }
+
   a.email = email;
   a.label = email;
   a.service = p.name;
