@@ -54,6 +54,49 @@ function hasDuplicateAccount(accountName, service, excludedId = null) {
   return accounts.some((account) => account.id !== excludedId && accountKey(getAccountName(account), account.service) === key);
 }
 
+function hasPaidNotificationAccess(user = currentUser) {
+  if (!user || user.is_guest) return false;
+  if (!['active', 'trialing'].includes(user.subscription_status)) return false;
+  return !user.subscription_current_period_end
+    || new Date(user.subscription_current_period_end).getTime() > Date.now();
+}
+
+async function startStripeCheckout() {
+  if (!currentUser || currentUser.is_guest) {
+    toast('กรุณาเข้าสู่ระบบด้วย LINE ก่อนสมัครแจ้งเตือน');
+    return;
+  }
+  if (!sb || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    toast('ยังไม่ได้ตั้งค่า Supabase สำหรับการชำระเงิน');
+    return;
+  }
+  const idToken = window.liff?.getIDToken?.();
+  if (!idToken) {
+    toast('กรุณาเข้าสู่ระบบด้วย LINE ใหม่ก่อนชำระเงิน');
+    return;
+  }
+  const button = document.getElementById('upgradeBtn');
+  if (button) { button.disabled = true; button.textContent = 'กำลังเปิดหน้าชำระเงิน...'; }
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/create-stripe-checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ idToken }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.url) throw new Error(body.error || 'เปิดหน้าชำระเงินไม่สำเร็จ');
+    window.location.assign(body.url);
+  } catch (err) {
+    console.error('Stripe checkout error:', err);
+    toast(err.message || 'เปิดหน้าชำระเงินไม่สำเร็จ');
+    if (button) { button.disabled = false; button.textContent = 'แจ้งเตือน LINE ฿49/เดือน'; }
+  }
+}
+
 // ============================================
 // Auth UI
 // ============================================
@@ -64,29 +107,38 @@ function updateAuthUI() {
   const userLabel = document.getElementById("userLabel");
   const addBtn = document.getElementById("addBtn");
   const deleteBtn = document.getElementById("deleteBtn");
-
-  if (!loginBtn) return;
+  const upgradeBtn = document.getElementById("upgradeBtn");
+  const membershipLabel = document.getElementById("membershipLabel");
 
   if (currentUser) {
-    loginBtn.style.display = "none";
-    logoutBtn.style.display = "inline-flex";
-    userLabel.style.display = "inline";
+    if (loginBtn) loginBtn.style.display = "none";
+    if (logoutBtn) logoutBtn.style.display = "inline-flex";
+    if (userLabel) userLabel.style.display = "inline";
 
-    if (currentUser.is_guest) {
+    if (userLabel && currentUser.is_guest) {
       userLabel.textContent = currentUser.display_name;
-    } else {
+    } else if (userLabel) {
       userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
     }
 
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
+    if (upgradeBtn) upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+    if (membershipLabel) {
+      membershipLabel.style.display = hasPaidNotificationAccess() ? "inline" : "none";
+      membershipLabel.textContent = hasPaidNotificationAccess() ? "LINE แจ้งเตือน: เปิดใช้แล้ว" : "";
+    }
   } else {
-    loginBtn.style.display = "inline-flex";
-    logoutBtn.style.display = "none";
-    userLabel.style.display = "none";
-    userLabel.textContent = "";
+    if (loginBtn) loginBtn.style.display = "inline-flex";
+    if (logoutBtn) logoutBtn.style.display = "none";
+    if (userLabel) {
+      userLabel.style.display = "none";
+      userLabel.textContent = "";
+    }
     if (addBtn) addBtn.style.display = "none";
     if (deleteBtn) deleteBtn.style.display = "none";
+    if (upgradeBtn) upgradeBtn.style.display = "none";
+    if (membershipLabel) membershipLabel.style.display = "none";
   }
 }
 
@@ -824,6 +876,7 @@ async function initApp() {
   document.getElementById("logoutBtn")?.addEventListener("click", signOut);
   document.getElementById("addBtn")?.addEventListener("click", openAddModal);
   document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
+  document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
 
   // 1) Check Guest mode first
   const isGuest = localStorage.getItem("guest_mode") === "true";
@@ -870,6 +923,14 @@ async function initApp() {
   // 5) Clean URL params if returning from LINE Login (e.g. ?code=...&state=...)
   if (window.location.search && (window.location.search.includes("code=") || window.location.search.includes("liffClientId="))) {
     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+  }
+
+  if (new URLSearchParams(window.location.search).get("checkout") === "success") {
+    toast("ชำระเงินสำเร็จ กำลังเปิดสิทธิ์แจ้งเตือน LINE");
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (new URLSearchParams(window.location.search).get("checkout") === "cancelled") {
+    toast("ยกเลิกการชำระเงินแล้ว");
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 
   // 6) Render UI (if not already rendered by handleLiffLogin)
