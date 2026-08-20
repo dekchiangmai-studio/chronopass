@@ -40,13 +40,18 @@ function toast(msg) {
 }
 
 // Email matching is case-insensitive, consistent with the database constraint.
-function accountKey(email, service) {
-  return `${String(email || "").trim().toLowerCase()}::${String(service || "").trim().toLowerCase()}`;
+function getAccountName(account) {
+  // `email` is retained as a fallback for data saved before account names were introduced.
+  return String(account?.accountName || account?.email || "").trim();
 }
 
-function hasDuplicateAccount(email, service, excludedId = null) {
-  const key = accountKey(email, service);
-  return accounts.some((account) => account.id !== excludedId && accountKey(account.email, account.service) === key);
+function accountKey(accountName, service) {
+  return `${String(accountName || "").trim().toLowerCase()}::${String(service || "").trim().toLowerCase()}`;
+}
+
+function hasDuplicateAccount(accountName, service, excludedId = null) {
+  const key = accountKey(accountName, service);
+  return accounts.some((account) => account.id !== excludedId && accountKey(getAccountName(account), account.service) === key);
 }
 
 // ============================================
@@ -60,26 +65,26 @@ function updateAuthUI() {
   const addBtn = document.getElementById("addBtn");
   const deleteBtn = document.getElementById("deleteBtn");
 
-  if (!loginBtn) return;
-
   if (currentUser) {
-    loginBtn.style.display = "none";
-    logoutBtn.style.display = "inline-flex";
-    userLabel.style.display = "inline";
+    if (loginBtn) loginBtn.style.display = "none";
+    if (logoutBtn) logoutBtn.style.display = "inline-flex";
+    if (userLabel) userLabel.style.display = "inline";
 
-    if (currentUser.is_guest) {
+    if (userLabel && currentUser.is_guest) {
       userLabel.textContent = currentUser.display_name;
-    } else {
+    } else if (userLabel) {
       userLabel.textContent = currentUser.display_name || currentUser.email || "LINE User";
     }
 
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
   } else {
-    loginBtn.style.display = "inline-flex";
-    logoutBtn.style.display = "none";
-    userLabel.style.display = "none";
-    userLabel.textContent = "";
+    if (loginBtn) loginBtn.style.display = "inline-flex";
+    if (logoutBtn) logoutBtn.style.display = "none";
+    if (userLabel) {
+      userLabel.style.display = "none";
+      userLabel.textContent = "";
+    }
     if (addBtn) addBtn.style.display = "none";
     if (deleteBtn) deleteBtn.style.display = "none";
   }
@@ -282,8 +287,8 @@ async function hydrateAccounts() {
       accounts = data.map((r) => ({
         id: Number(r.id),
         service: r.service,
-        label: r.label || r.email,
-        email: r.email,
+        label: r.label || r.account_name || r.email,
+        accountName: r.account_name || r.email,
         resetMode: r.reset_mode || "hours",
         resetHours: Number(r.reset_hours || 6),
         resetTime: r.reset_time || "06:00",
@@ -310,8 +315,8 @@ async function saveAccounts() {
     const rows = accounts.map((a) => ({
       id: Number(a.id),
       user_id: currentUser.id,
-      email: String(a.email || "").trim(),
-      label: String(a.label || a.email || "").trim(),
+      account_name: getAccountName(a),
+      label: String(a.label || getAccountName(a)).trim(),
       service: String(a.service || "Copilot"),
       reset_mode: String(a.resetMode || "hours"),
       reset_hours: Number(a.resetHours || 6),
@@ -329,6 +334,7 @@ async function saveAccounts() {
 // ---- Presets ----
 const PRESETS = {
   copilot:      { name: "Copilot",             resetMode: "monthly", resetHours: 720,  resetTime: "00:00", resetDay: 1, label: "Copilot · รายเดือน" },
+  codex:        { name: "Codex",               resetMode: "monthlyFromUse", resetHours: 720, resetTime: "00:00", label: "Codex · ทุกเดือนตามวันหมด" },
   antigravity:  { name: "Google Antigravity",   resetMode: "days",    resetHours: 168,  resetTime: "08:00", label: "Google Antigravity · 7 วัน" },
   gemini:       { name: "Gemini",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Gemini · 24 ชม." },
   claude:       { name: "Claude",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Claude · 24 ชม." },
@@ -345,6 +351,18 @@ function getPreset(serviceName) {
 }
 
 // ---- Reset time calculations ----
+function addCalendarMonths(date, months) {
+  // setMonth() can skip a month (e.g. Jan 31 + 1 month). Clamp the day first
+  // so Codex follows the same billing day whenever that day exists.
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setDate(1);
+  result.setMonth(result.getMonth() + months);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  return result;
+}
+
 function getNextReset(account, refTime) {
   const ref = new Date(refTime);
   const preset = getPreset(account.service);
@@ -354,6 +372,10 @@ function getNextReset(account, refTime) {
     const interval = (Number(preset.resetHours) || 1) * 3600000;
     const cycles = Math.floor((Date.now() - ref.getTime()) / interval) + 1;
     return new Date(ref.getTime() + cycles * interval);
+  }
+
+  if (mode === "monthlyFromUse") {
+    return addCalendarMonths(ref, 1);
   }
 
   if (mode === "monthly") {
@@ -389,6 +411,7 @@ function scheduleLabel(a) {
   const p = getPreset(a.service);
   if (p.resetMode === "hours") return `${p.resetHours} ชม.`;
   if (p.resetMode === "days") return `${Math.round(p.resetHours / 24)} วัน`;
+  if (p.resetMode === "monthlyFromUse") return "ทุกเดือนตามวันหมด";
   if (p.resetMode === "monthly") return "ทุกวันที่ 1";
   return "ตามกำหนด";
 }
@@ -406,7 +429,7 @@ function useAccount(id) {
   a.lastUsed = Date.now();
   saveAccounts();
   render();
-  toast(`${a.service} — ${a.email} บันทึกแล้ว`);
+  toast(`${a.service} — ${getAccountName(a)} บันทึกแล้ว`);
 }
 
 function deleteAccount(id) {
@@ -447,8 +470,8 @@ function openAddModal() {
   body.innerHTML = `
     <div class="form-grid">
       <div class="form-row">
-        <label for="newEmail">อีเมลบัญชี</label>
-        <input id="newEmail" placeholder="example@email.com">
+        <label for="newAccountName">ชื่อบัญชี / อีเมล</label>
+        <input id="newAccountName" placeholder="เช่น work-account หรือ example@email.com">
       </div>
       <div class="form-row">
         <label>เลือกบริการ AI</label>
@@ -467,23 +490,23 @@ function openAddModal() {
 
   m.classList.remove("hidden");
   m.setAttribute("aria-hidden", "false");
-  setTimeout(() => document.getElementById("newEmail")?.focus(), 50);
+  setTimeout(() => document.getElementById("newAccountName")?.focus(), 50);
 }
 
 function addAccount() {
   if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
 
-  const email = document.getElementById("newEmail").value.trim();
+  const accountName = document.getElementById("newAccountName").value.trim();
   const selected = Array.from(document.querySelectorAll(".preset-item input:checked")).map((c) => c.value);
 
-  if (!email) { toast("กรุณากรอกอีเมล"); return; }
+  if (!accountName) { toast("กรุณากรอกชื่อบัญชีหรืออีเมล"); return; }
   if (!selected.length) { toast("กรุณาเลือกบริการอย่างน้อย 1 ตัว"); return; }
 
   const duplicate = selected
     .map((key) => (PRESETS[key] || PRESETS.copilot).name)
-    .find((service) => hasDuplicateAccount(email, service));
+    .find((service) => hasDuplicateAccount(accountName, service));
   if (duplicate) {
-    toast(`มีบัญชี ${duplicate} สำหรับอีเมลนี้อยู่แล้ว`);
+    toast(`มีบัญชี ${duplicate} สำหรับชื่อนี้อยู่แล้ว`);
     return;
   }
 
@@ -492,8 +515,8 @@ function addAccount() {
     return {
       id: Date.now() + Math.floor(Math.random() * 10000),
       service: p.name,
-      label: email,
-      email,
+      label: accountName,
+      accountName,
       resetMode: p.resetMode,
       resetHours: p.resetHours,
       resetTime: p.resetTime,
@@ -506,7 +529,7 @@ function addAccount() {
   saveAccounts();
   render();
   closeModal();
-  toast(`เพิ่ม ${newList.length} บัญชีสำหรับ ${email}`);
+  toast(`เพิ่ม ${newList.length} บัญชีสำหรับ ${accountName}`);
 }
 
 function openEditModal(id) {
@@ -521,8 +544,8 @@ function openEditModal(id) {
   body.innerHTML = `
     <div class="form-grid">
       <div class="form-row">
-        <label for="editEmail">อีเมลบัญชี</label>
-        <input id="editEmail" value="${a.email}">
+        <label for="editAccountName">ชื่อบัญชี / อีเมล</label>
+        <input id="editAccountName" value="${getAccountName(a)}">
       </div>
       <div class="form-row">
         <label for="editPreset">บริการ AI</label>
@@ -541,25 +564,25 @@ function openEditModal(id) {
 
   m.classList.remove("hidden");
   m.setAttribute("aria-hidden", "false");
-  setTimeout(() => document.getElementById("editEmail")?.focus(), 50);
+  setTimeout(() => document.getElementById("editAccountName")?.focus(), 50);
 }
 
 function saveEdit(id) {
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
 
-  const email = document.getElementById("editEmail").value.trim();
+  const accountName = document.getElementById("editAccountName").value.trim();
   const key = document.getElementById("editPreset").value;
-  if (!email) { toast("กรุณากรอกอีเมล"); return; }
+  if (!accountName) { toast("กรุณากรอกชื่อบัญชีหรืออีเมล"); return; }
 
   const p = PRESETS[key] || PRESETS.copilot;
-  if (hasDuplicateAccount(email, p.name, id)) {
-    toast(`มีบัญชี ${p.name} สำหรับอีเมลนี้อยู่แล้ว`);
+  if (hasDuplicateAccount(accountName, p.name, id)) {
+    toast(`มีบัญชี ${p.name} สำหรับชื่อนี้อยู่แล้ว`);
     return;
   }
 
-  a.email = email;
-  a.label = email;
+  a.accountName = accountName;
+  a.label = accountName;
   a.service = p.name;
   a.resetMode = p.resetMode;
   a.resetHours = p.resetHours;
@@ -591,7 +614,7 @@ function openDeleteModal() {
       ${accounts.map((a) => `
         <div class="delete-item">
           <div>
-            <div class="email">${a.email}</div>
+            <div class="email">${getAccountName(a)}</div>
             <div class="service">${a.service}</div>
           </div>
           <button class="danger" type="button" onclick="deleteAccount(${a.id})">ลบ</button>
@@ -692,7 +715,7 @@ function render() {
   const stf = document.getElementById("status")?.value || "all";
 
   const filtered = accounts.filter((a) => {
-    const hit = !q || `${a.email} ${a.label} ${a.service}`.toLowerCase().includes(q);
+    const hit = !q || `${getAccountName(a)} ${a.label} ${a.service}`.toLowerCase().includes(q);
     const st = accountState(a);
     const statusCat = !a.lastUsed ? "ready" : st === "ready" ? "used" : "waiting";
     return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || statusCat === stf);
@@ -769,7 +792,7 @@ function render() {
 
         return `<div class="card">
           <div class="top">
-            <div style="flex:1;min-width:0"><div class="name">${a.email}</div></div>
+            <div style="flex:1;min-width:0"><div class="name">${getAccountName(a)}</div></div>
             <div class="pill ${cls}">${st === "ready" ? "พร้อมใช้" : "รอรีเซ็ต"}</div>
           </div>
           <div class="meta">
