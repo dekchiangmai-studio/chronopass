@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="ChronoPass — ระบบติดตามสถานะและเวลารีเซ็ตบัญชี AI">
+  <title>ChronoPass</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>โครโนพาส <span class="header-en">(ChronoPass)</span></h1>
+      <div class="sub">ระบบติดตามสถานะและเวลารีเซ็ตบัญชี</div>
+      <div class="brand-tagline">เช็กสถานะพร้อมใช้ รู้เวลารีเซ็ตล่วงหน้า</div>
+    </div>
+    <div class="header-actions" id="headerActions">
+      <div id="authPanel">
+        <button id="lineLoginBtn" class="line-login-btn" type="button">เข้าสู่ระบบด้วย LINE</button>
+        <span id="userLabel"></span>
+        <button id="logoutBtn" class="ghost" type="button" style="display:none;">ออกจากระบบ</button>
+      </div>
+      <button id="addBtn" class="primary" type="button" style="display:none;">+ เพิ่มบัญชีใหม่</button>
+      <button id="deleteBtn" class="danger" type="button" style="display:none;">ลบ</button>
+    </div>
+  </header>
+
+  <div class="stats" id="statsRow" style="display:none;">
+    <div class="stat"><div class="n" id="total">0</div><div class="l">บัญชีทั้งหมด</div></div>
+    <div class="stat"><div class="n" id="ready">0</div><div class="l">พร้อมใช้</div></div>
+    <div class="stat"><div class="n" id="used">0</div><div class="l">ใช้แล้ว</div></div>
+    <div class="stat"><div class="n" id="waiting">0</div><div class="l">กำลังรอรีเซ็ต</div></div>
+  </div>
+
+  <div id="serviceOverview" class="grid" style="margin-bottom:22px;display:none;"></div>
+
+  <div class="toolbar" id="toolbarRow" style="display:none;">
+    <input id="search" placeholder="ค้นหาบัญชี / อีเมล..." oninput="render()">
+    <select id="status" onchange="render()">
+      <option value="all">ทุกสถานะ</option>
+      <option value="ready">พร้อมใช้</option>
+      <option value="used">ใช้แล้ว</option>
+      <option value="waiting">รอรีเซ็ต</option>
+    </select>
+  </div>
+
+  <div id="aiFilters" class="filter-row" style="display:none;"></div>
+
+  <div id="sections"></div>
+</div>
+
+<!-- Modal -->
+<div id="actionModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 id="modalTitle">เพิ่มบัญชีใหม่</h2>
+      <button class="ghost icon-close" type="button" onclick="closeModal()">×</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- SDKs -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<!-- Config -->
+<script>
+  window.APP_CONFIG = {
+    SUPABASE_URL: "https://irwqejdtwfgdouzyswbz.supabase.co",
+    SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlyd3FlamR0d2ZnZG91enlzd2J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwMjMxNjYsImV4cCI6MjEwMjU5OTE2Nn0.LVufLhShkVqqBvrApfYr9L7_Ygx_ItjGyYBLps5I-K8",
+    LIFF_ID: "2007981677-R4UeGoKy",
+  };
+</script>
+
+<!-- App -->
+<script src="assets/js/app.js"></script>
+</body>
+</html>
