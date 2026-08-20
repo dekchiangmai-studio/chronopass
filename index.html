@@ -1,50 +1,202 @@
 <!doctype html>
 <html lang="th">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="ChronoPass — ผู้ช่วยจัดการเวลาพร้อมใช้ของบัญชี AI ทุกบัญชี">
-  <title>ChronoPass — ทุกช่วงเวลาที่พร้อมใช้</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/landing.css">
-</head>
-<body>
-  <div class="grid-bg"></div>
-  <header class="nav container">
-    <a class="brand" href="#top" aria-label="ChronoPass home"><span class="brand-mark"><i></i><i></i><i></i></span><span>chrono<span>pass</span></span></a>
-    <nav aria-label="เมนูหลัก"><a href="#how-it-works">วิธีใช้งาน</a><a href="#features">ความสามารถ</a><a href="#faq">คำถามที่พบบ่อย</a></nav>
-    <a class="nav-cta" href="home.html">เข้าใช้งาน <span>↗</span></a>
-  </header>
-  <main id="top">
-    <section class="hero container">
-      <div class="hero-copy">
-        <div class="eyebrow"><span class="pulse"></span> YOUR AI TIME, ORGANISED</div>
-        <h1>ทุกบัญชี AI<br><em>พร้อมใช้</em> ในเวลาที่ใช่</h1>
-        <p>ChronoPass ช่วยติดตามโควตาและเวลารีเซ็ตของบัญชี AI ทั้งหมด ให้คุณรู้ทันทีว่าบัญชีไหนพร้อมใช้งาน โดยไม่ต้องคอยเดา</p>
-        <div class="hero-actions"><a class="button primary-button" href="home.html">เริ่มใช้งานฟรี <span>→</span></a><a class="text-link" href="#how-it-works">ดูวิธีการทำงาน <span>↓</span></a></div>
-        <div class="trust"><div class="avatars"><b>G</b><b>C</b><b>✦</b></div><span>จัดระเบียบทุกบริการ AI<br>ไว้ในมุมมองเดียว</span></div>
-      </div>
-      <div class="hero-visual" aria-label="ตัวอย่างแดชบอร์ด ChronoPass">
-        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-        <div class="dashboard-card">
-          <div class="card-top"><div><small>GOOD MORNING,</small><strong>อาทิตย์ <span>✦</span></strong></div><button>＋ เพิ่มบัญชี</button></div>
-          <div class="overview"><div><span>พร้อมใช้</span><b>04</b><small>จาก 6 บัญชี</small></div><div class="ring"><span>67<small>%</small></span></div></div>
-          <div class="dashboard-label"><span>YOUR SERVICES</span><span>สถานะล่าสุด</span></div>
-          <div class="service-row ready"><div class="service-icon gemini">✦</div><div><b>Gemini</b><small>บัญชีส่วนตัว</small></div><div class="status"><i></i> พร้อมใช้</div></div>
-          <div class="service-row waiting"><div class="service-icon claude">AI</div><div><b>Claude</b><small>ทีมดีไซน์</small></div><div class="timer">รีเซ็ตใน <b>02:14:36</b></div></div>
-          <div class="service-row ready"><div class="service-icon chatgpt">◉</div><div><b>ChatGPT</b><small>บัญชีงาน</small></div><div class="status"><i></i> พร้อมใช้</div></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="ChronoPass — ผู้ช่วยจัดการเวลาพร้อมใช้ของบัญชี AI ทุกบัญชี"
+    />
+    <title>ChronoPass — ทุกช่วงเวลาที่พร้อมใช้</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/landing.css" />
+  </head>
+  <body>
+    <div class="grid-bg"></div>
+    <header class="nav container">
+      <a class="brand" href="#top" aria-label="ChronoPass home"
+        ><span class="brand-mark"><i></i><i></i><i></i></span
+        ><span>chrono<span>pass</span></span></a
+      >
+      <nav aria-label="เมนูหลัก">
+        <a href="#how-it-works">วิธีใช้งาน</a><a href="#features">ความสามารถ</a
+        ><a href="#faq">คำถามที่พบบ่อย</a>
+      </nav>
+      <a class="nav-cta" href="home.html">เข้าใช้งาน <span>↗</span></a>
+    </header>
+    <main id="top">
+      <section class="hero container">
+        <div class="hero-copy">
+          <div class="eyebrow">
+            <span class="pulse"></span> YOUR AI TIME, ORGANISED
+          </div>
+          <h1>ทุกบัญชี AI<br /><em>พร้อมใช้</em> ในเวลาที่ใช่</h1>
+          <p>
+            ChronoPass ช่วยติดตามโควตาและเวลารีเซ็ตของบัญชี AI ทั้งหมด
+            ให้คุณรู้ทันทีว่าบัญชีไหนพร้อมใช้งาน โดยไม่ต้องคอยเดา
+          </p>
+          <div class="hero-actions">
+            <a class="button primary-button" href="home.html"
+              >เริ่มใช้งานฟรี <span>→</span></a
+            ><a class="text-link" href="#how-it-works"
+              >ดูวิธีการทำงาน <span>↓</span></a
+            >
+          </div>
+          <div class="trust">
+            <div class="avatars"><b>G</b><b>C</b><b>✦</b></div>
+            <span>จัดระเบียบทุกบริการ AI<br />ไว้ในมุมมองเดียว</span>
+          </div>
         </div>
-        <div class="float-tag tag-one"><span>✓</span> พร้อมใช้แล้ว</div><div class="float-tag tag-two">⏱ <b>02:14:36</b></div>
-      </div>
-    </section>
-    <section class="logos container"><p>ติดตามบริการที่คุณใช้เป็นประจำ</p><div><span>ChatGPT</span><span>Claude</span><span>Gemini</span><span>Copilot</span><span>Perplexity</span></div></section>
-    <section class="section container" id="features"><div class="section-heading"><p class="eyebrow">CLEAR AT A GLANCE</p><h2>ทุกสิ่งที่ต้องรู้<br>ในภาพเดียว</h2><p>จบกับการจดจำว่าใช้บัญชีไหนไปเมื่อไร ChronoPass ทำหน้าที่จำให้คุณ</p></div><div class="feature-grid"><article><span class="feature-number">01</span><div class="feature-icon">◷</div><h3>นับเวลาถอยหลังอัตโนมัติ</h3><p>เห็นเวลารีเซ็ตแบบเรียลไทม์ วางแผนงานต่อได้อย่างมั่นใจ</p></article><article><span class="feature-number">02</span><div class="feature-icon">◫</div><h3>รวมทุกบริการไว้ที่เดียว</h3><p>จัดการ ChatGPT, Claude, Gemini และบัญชีอื่น ๆ จากหน้าจอเดียว</p></article><article><span class="feature-number">03</span><div class="feature-icon">⌁</div><h3>ซิงก์ข้ามอุปกรณ์</h3><p>ล็อกอินด้วย LINE แล้วข้อมูลของคุณจะอยู่กับคุณทุกที่</p></article></div></section>
-    <section class="steps container" id="how-it-works"><div class="steps-intro"><p class="eyebrow">SIMPLE BY DESIGN</p><h2>เริ่มต้นได้<br>ในสามขั้นตอน</h2></div><ol><li><span>01</span><div><h3>เพิ่มบัญชีของคุณ</h3><p>เลือกบริการ AI และเพิ่มอีเมลที่ใช้งาน</p></div></li><li><span>02</span><div><h3>บันทึกเมื่อใช้โควตา</h3><p>แตะครั้งเดียวเมื่อบัญชีนั้นใช้ครบแล้ว</p></div></li><li><span>03</span><div><h3>กลับมาเมื่อพร้อมใช้</h3><p>เราจะคำนวณเวลารีเซ็ตให้แบบอัตโนมัติ</p></div></li></ol></section>
-    <section class="closing container"><p class="eyebrow">MAKE TIME WORK FOR YOU</p><h2>เลิกเดาเวลา<br><em>เริ่มใช้เวลาให้คุ้ม</em></h2><p>เริ่มจัดระเบียบบัญชี AI ของคุณวันนี้ ไม่มีค่าใช้จ่าย</p><a class="button primary-button" href="index.html">ไปที่ ChronoPass <span>→</span></a></section>
-    <section class="faq container" id="faq"><details><summary>ChronoPass ใช้งานกับบริการอะไรได้บ้าง?<span>+</span></summary><p>รองรับ ChatGPT, Claude, Gemini, GitHub Copilot และ Perplexity โดยเริ่มเพิ่มบัญชีได้ทันทีจากแดชบอร์ด</p></details><details><summary>ข้อมูลของฉันปลอดภัยหรือไม่?<span>+</span></summary><p>ChronoPass เก็บเฉพาะข้อมูลบัญชีและสถานะการใช้งานที่จำเป็นต่อการคำนวณเวลารีเซ็ตเท่านั้น</p></details></section>
-  </main>
-  <footer class="container"><a class="brand" href="#top"><span class="brand-mark"><i></i><i></i><i></i></span><span>chrono<span>pass</span></span></a><p>© 2026 ChronoPass. Made for focused work.</p><a href="#top">กลับด้านบน ↑</a></footer>
-  <script src="assets/js/landing.js"></script>
-</body>
+        <div class="hero-visual" aria-label="ตัวอย่างแดชบอร์ด ChronoPass">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="dashboard-card">
+            <div class="card-top">
+              <div>
+                <small>GOOD MORNING,</small
+                ><strong>อาทิตย์ <span>✦</span></strong>
+              </div>
+              <button>＋ เพิ่มบัญชี</button>
+            </div>
+            <div class="overview">
+              <div>
+                <span>พร้อมใช้</span><b>04</b><small>จาก 6 บัญชี</small>
+              </div>
+              <div class="ring">
+                <span>67<small>%</small></span>
+              </div>
+            </div>
+            <div class="dashboard-label">
+              <span>YOUR SERVICES</span><span>สถานะล่าสุด</span>
+            </div>
+            <div class="service-row ready">
+              <div class="service-icon gemini">✦</div>
+              <div><b>Gemini</b><small>บัญชีส่วนตัว</small></div>
+              <div class="status"><i></i> พร้อมใช้</div>
+            </div>
+            <div class="service-row waiting">
+              <div class="service-icon claude">AI</div>
+              <div><b>Claude</b><small>ทีมดีไซน์</small></div>
+              <div class="timer">รีเซ็ตใน <b>02:14:36</b></div>
+            </div>
+            <div class="service-row ready">
+              <div class="service-icon chatgpt">◉</div>
+              <div><b>ChatGPT</b><small>บัญชีงาน</small></div>
+              <div class="status"><i></i> พร้อมใช้</div>
+            </div>
+          </div>
+          <div class="float-tag tag-one"><span>✓</span> พร้อมใช้แล้ว</div>
+          <div class="float-tag tag-two">⏱ <b>02:14:36</b></div>
+        </div>
+      </section>
+      <section class="logos container">
+        <p>ติดตามบริการที่คุณใช้เป็นประจำ</p>
+        <div>
+          <span>ChatGPT</span><span>Claude</span><span>Gemini</span
+          ><span>Copilot</span><span>Perplexity</span><span>Codex</span>
+        </div>
+      </section>
+      <section class="section container" id="features">
+        <div class="section-heading">
+          <p class="eyebrow">CLEAR AT A GLANCE</p>
+          <h2>ทุกสิ่งที่ต้องรู้<br />ในภาพเดียว</h2>
+          <p>
+            จบกับการจดจำว่าใช้บัญชีไหนไปเมื่อไร ChronoPass ทำหน้าที่จำให้คุณ
+          </p>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="feature-number">01</span>
+            <div class="feature-icon">◷</div>
+            <h3>นับเวลาถอยหลังอัตโนมัติ</h3>
+            <p>เห็นเวลารีเซ็ตแบบเรียลไทม์ วางแผนงานต่อได้อย่างมั่นใจ</p>
+          </article>
+          <article>
+            <span class="feature-number">02</span>
+            <div class="feature-icon">◫</div>
+            <h3>รวมทุกบริการไว้ที่เดียว</h3>
+            <p>จัดการ ChatGPT, Claude, Gemini และบัญชีอื่น ๆ จากหน้าจอเดียว</p>
+          </article>
+          <article>
+            <span class="feature-number">03</span>
+            <div class="feature-icon">⌁</div>
+            <h3>ซิงก์ข้ามอุปกรณ์</h3>
+            <p>ล็อกอินด้วย LINE แล้วข้อมูลของคุณจะอยู่กับคุณทุกที่</p>
+          </article>
+        </div>
+      </section>
+      <section class="steps container" id="how-it-works">
+        <div class="steps-intro">
+          <p class="eyebrow">SIMPLE BY DESIGN</p>
+          <h2>เริ่มต้นได้<br />ในสามขั้นตอน</h2>
+        </div>
+        <ol>
+          <li>
+            <span>01</span>
+            <div>
+              <h3>เพิ่มบัญชีของคุณ</h3>
+              <p>เลือกบริการ AI และเพิ่มอีเมลที่ใช้งาน</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <h3>บันทึกเมื่อใช้โควตา</h3>
+              <p>แตะครั้งเดียวเมื่อบัญชีนั้นใช้ครบแล้ว</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <h3>กลับมาเมื่อพร้อมใช้</h3>
+              <p>เราจะคำนวณเวลารีเซ็ตให้แบบอัตโนมัติ</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+      <section class="closing container">
+        <p class="eyebrow">MAKE TIME WORK FOR YOU</p>
+        <h2>เลิกเดาเวลา<br /><em>เริ่มใช้เวลาให้คุ้ม</em></h2>
+        <p>เริ่มจัดระเบียบบัญชี AI ของคุณวันนี้ ไม่มีค่าใช้จ่าย</p>
+        <a class="button primary-button" href="home.html"
+          >ไปที่ ChronoPass <span>→</span></a
+        >
+      </section>
+      <section class="faq container" id="faq">
+        <details>
+          <summary>
+            ChronoPass ใช้งานกับบริการอะไรได้บ้าง?<span>+</span>
+          </summary>
+          <p>
+            รองรับ ChatGPT, Claude, Gemini, GitHub Copilot, Perplexity และ Codex
+            โดยเริ่มเพิ่มบัญชีได้ทันทีจากแดชบอร์ด
+          </p>
+        </details>
+        <details>
+          <summary>ข้อมูลของฉันปลอดภัยหรือไม่?<span>+</span></summary>
+          <p>
+            ความปลอดภัยของข้อมูลผู้ใช้ ChronoPass
+            ให้ความสำคัญกับความเป็นส่วนตัวของคุณเป็นอันดับแรก
+            เราไม่บันทึกหรือเข้าถึงรหัสผ่านใดๆ ของคุณทั้งสิ้น
+            ระบบจะทำการจัดเก็บเพียงข้อมูลบัญชีและสถานะการใช้งานที่จำเป็นสำหรับการคำนวณเวลารีเซ็ตเท่านั้น
+            เพื่อความปลอดภัยสูงสุดของผู้ใช้งาน
+          </p>
+        </details>
+      </section>
+    </main>
+    <footer class="container">
+      <a class="brand" href="#top"
+        ><span class="brand-mark"><i></i><i></i><i></i></span
+        ><span>chrono<span>pass</span></span></a
+      >
+      <p>© 2026 ChronoPass. Made for focused work.</p>
+      <a href="#top">กลับด้านบน ↑</a>
+    </footer>
+    <script src="assets/js/landing.js"></script>
+  </body>
 </html>
