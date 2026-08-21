@@ -97,6 +97,35 @@ async function startStripeCheckout() {
   }
 }
 
+async function cancelStripeSubscription() {
+  if (!currentUser || currentUser.is_guest || currentUser.subscription_cancel_at_period_end) return;
+  if (!window.confirm('ยืนยันการยกเลิกสมาชิก? คุณยังใช้งานแจ้งเตือน LINE ได้จนจบรอบบิลปัจจุบัน')) return;
+  const idToken = window.liff?.getIDToken?.();
+  if (!idToken || !sb) {
+    toast('กรุณาเข้าสู่ระบบด้วย LINE ใหม่ก่อนยกเลิกสมาชิก');
+    return;
+  }
+  const button = document.getElementById('cancelSubscriptionBtn');
+  if (button) { button.disabled = true; button.textContent = 'กำลังยกเลิก...'; }
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/cancel-stripe-subscription`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ idToken }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'ยกเลิกสมาชิกไม่สำเร็จ');
+    currentUser.subscription_cancel_at_period_end = true;
+    if (body.currentPeriodEnd) currentUser.subscription_current_period_end = new Date(body.currentPeriodEnd * 1000).toISOString();
+    updateAuthUI();
+    toast('ยกเลิกการต่ออายุแล้ว คุณยังใช้ได้จนจบรอบบิล');
+  } catch (err) {
+    console.error('Stripe cancellation error:', err);
+    toast(err.message || 'ยกเลิกสมาชิกไม่สำเร็จ');
+    if (button) { button.disabled = false; button.textContent = 'ยกเลิกสมาชิก'; }
+  }
+}
+
 // ============================================
 // Auth UI
 // ============================================
@@ -109,6 +138,7 @@ function updateAuthUI() {
   const deleteBtn = document.getElementById("deleteBtn");
   const upgradeBtn = document.getElementById("upgradeBtn");
   const membershipLabel = document.getElementById("membershipLabel");
+  const cancelSubscriptionBtn = document.getElementById("cancelSubscriptionBtn");
 
   if (currentUser) {
     if (loginBtn) loginBtn.style.display = "none";
@@ -124,9 +154,18 @@ function updateAuthUI() {
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
     if (upgradeBtn) upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+    if (cancelSubscriptionBtn) {
+      const canCancel = hasPaidNotificationAccess() && currentUser.stripe_subscription_id && !currentUser.subscription_cancel_at_period_end;
+      cancelSubscriptionBtn.style.display = canCancel ? "inline-flex" : "none";
+    }
     if (membershipLabel) {
       membershipLabel.style.display = hasPaidNotificationAccess() ? "inline" : "none";
-      membershipLabel.textContent = hasPaidNotificationAccess() ? "LINE แจ้งเตือน: เปิดใช้แล้ว" : "";
+      const endDate = currentUser.subscription_current_period_end
+        ? new Date(currentUser.subscription_current_period_end).toLocaleDateString('th-TH')
+        : '';
+      membershipLabel.textContent = hasPaidNotificationAccess()
+        ? (currentUser.subscription_cancel_at_period_end ? `LINE แจ้งเตือน: ใช้ได้ถึง ${endDate}` : "LINE แจ้งเตือน: เปิดใช้แล้ว")
+        : "";
     }
   } else {
     if (loginBtn) loginBtn.style.display = "inline-flex";
@@ -138,6 +177,7 @@ function updateAuthUI() {
     if (addBtn) addBtn.style.display = "none";
     if (deleteBtn) deleteBtn.style.display = "none";
     if (upgradeBtn) upgradeBtn.style.display = "none";
+    if (cancelSubscriptionBtn) cancelSubscriptionBtn.style.display = "none";
     if (membershipLabel) membershipLabel.style.display = "none";
   }
 }
@@ -877,6 +917,7 @@ async function initApp() {
   document.getElementById("addBtn")?.addEventListener("click", openAddModal);
   document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
   document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
+  document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", cancelStripeSubscription);
 
   // 1) Check Guest mode first
   const isGuest = localStorage.getItem("guest_mode") === "true";
