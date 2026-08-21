@@ -8,7 +8,7 @@ const CFG = window.APP_CONFIG || {};
 const LIFF_ID = (CFG.LIFF_ID || "").trim();
 const SUPABASE_URL = (CFG.SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "").trim();
 const SUPABASE_ANON_KEY = (CFG.SUPABASE_ANON_KEY || "").trim();
-const KEY = "chronopass-accounts-v1";
+const GUEST_KEY = "chronopass-guest-accounts-v1";
 const ACCOUNT_CACHE_TTL_MS = 10 * 60 * 1000;
 
 // ---- Supabase client ----
@@ -27,12 +27,12 @@ let currentServiceFilter = "all";
 // ============================================
 
 function getLocal() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  try { return JSON.parse(localStorage.getItem(GUEST_KEY)) || []; }
   catch { return []; }
 }
 
 function accountCacheKey() {
-  return currentUser?.line_user_id ? `${KEY}:${currentUser.line_user_id}` : null;
+  return currentUser?.line_user_id ? `chronopass-accounts-v1:${currentUser.line_user_id}` : null;
 }
 
 function getAccountCache() {
@@ -102,7 +102,7 @@ async function callAppData(action, payload = {}) {
 
 async function startStripeCheckout() {
   if (!currentUser || currentUser.is_guest) {
-    toast('กรุณาเข้าสู่ระบบด้วย LINE ก่อนสมัครแจ้งเตือน');
+    signInWithLine();
     return;
   }
   if (!sb || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -192,7 +192,10 @@ function updateAuthUI() {
 
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
-    if (upgradeBtn) upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+    if (upgradeBtn) {
+      upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+      upgradeBtn.textContent = currentUser.is_guest ? "เชื่อมต่อ LINE" : "แจ้งเตือน LINE ฿49/เดือน";
+    }
     if (cancelSubscriptionBtn) {
       const canCancel = hasPaidNotificationAccess() && currentUser.stripe_subscription_id && !currentUser.subscription_cancel_at_period_end;
       cancelSubscriptionBtn.style.display = canCancel ? "inline-flex" : "none";
@@ -389,15 +392,19 @@ async function signOut() {
 // ============================================
 
 async function hydrateAccounts() {
-  accounts = getLocal();
-
   // Guest data is intentionally local only.
-  if (!currentUser || currentUser.is_guest) return;
+  if (!currentUser) {
+    accounts = [];
+    return;
+  }
+  if (currentUser.is_guest) {
+    accounts = getLocal();
+    return;
+  }
 
   const cached = getAccountCache();
   if (cached) {
     accounts = cached;
-    localStorage.setItem(KEY, JSON.stringify(accounts));
     return;
   }
 
@@ -421,14 +428,15 @@ async function hydrateAccounts() {
     console.warn("Hydrate accounts error:", err);
   }
 
-  localStorage.setItem(KEY, JSON.stringify(accounts));
 }
 
 async function saveAccounts() {
-  localStorage.setItem(KEY, JSON.stringify(accounts));
+  if (!currentUser) return;
+  if (currentUser.is_guest) {
+    localStorage.setItem(GUEST_KEY, JSON.stringify(accounts));
+    return;
+  }
   setAccountCache();
-
-  if (!currentUser || currentUser.is_guest) return;
 
   try {
     const rows = accounts.map((a) => ({
@@ -557,7 +565,7 @@ function deleteAccount(id) {
   const t = accounts.find((x) => x.id === id);
   if (!t) return;
   accounts = accounts.filter((x) => x.id !== id);
-  setAccountCache();
+  if (currentUser && !currentUser.is_guest) setAccountCache();
 
   if (currentUser && !currentUser.is_guest) {
     callAppData('deleteAccount', { accountId: id }).catch((error) => console.error("Delete from DB:", error));
