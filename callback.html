@@ -64,7 +64,7 @@
 
         // Check if there's a LIFF access token in URL (hash fragment)
         // Just redirect — the main app will handle LIFF session
-        window.location.replace("./index.html");
+        window.location.replace("./home.html");
       } catch (err) {
         console.error("Callback error:", err);
         const el = document.getElementById("errorMsg");
@@ -72,7 +72,7 @@
         el.style.display = "block";
 
         // Redirect anyway after 3 seconds
-        setTimeout(() => window.location.replace("./index.html"), 3000);
+        setTimeout(() => window.location.replace("./home.html"), 3000);
       }
     }
 
