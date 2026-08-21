@@ -837,12 +837,12 @@ function render() {
   const filtered = accounts.filter((a) => {
     const hit = !q || `${getAccountName(a)} ${a.label} ${a.service}`.toLowerCase().includes(q);
     const st = accountState(a);
-    const statusCat = !a.lastUsed ? "ready" : st === "ready" ? "used" : "waiting";
-    return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || statusCat === stf);
+    return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || st === stf);
   });
 
   // Service chips
-  const services = [...new Set(accounts.map((a) => a.service))];
+  const services = [...new Set(accounts.map((a) => a.service))]
+    .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
   const filterRow = document.getElementById("aiFilters");
   if (filterRow) {
     filterRow.innerHTML = [
@@ -892,6 +892,10 @@ function render() {
   }
 
   for (const [service, list] of Object.entries(groups)) {
+    list.sort((a, b) => {
+      const statusOrder = Number(accountState(a) === 'waiting') - Number(accountState(b) === 'waiting');
+      return statusOrder || getAccountName(a).localeCompare(getAccountName(b), 'th', { sensitivity: 'base' });
+    });
     const all = accounts.filter((a) => a.service === service);
     const rdy = all.filter((a) => accountState(a) === "ready").length;
     const wt = all.length - rdy;
