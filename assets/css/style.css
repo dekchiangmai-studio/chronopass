@@ -1,1 +1,497 @@
-:root{--bg:#0a0d13;--raised:#10141c;--raised-2:#151b25;--blue:#2fb2ee;--blue-deep:#0e5f95;--ink:#eef1f4;--muted:#7c8798;--line:rgba(201,211,220,.14);--green:#7ed957;--red:#f07979;--radius:2px}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{min-height:100%;margin:0}body{background:var(--bg);color:var(--ink);font:300 16px/1.7 'IBM Plex Sans Thai',sans-serif}.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(201,211,220,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(201,211,220,.035) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 40%,transparent 100%)}.wrap{position:relative;z-index:1;width:min(1180px,100%);min-height:100vh;margin:auto;padding:0 32px 48px}header{display:flex;justify-content:space-between;align-items:center;gap:18px;min-height:96px;margin-bottom:32px;border-bottom:1px solid var(--line);flex-wrap:wrap}h1,h2,h3{font-family:'Chakra Petch',sans-serif;font-weight:600}h1{font-size:30px;line-height:1.2;margin:0;letter-spacing:.02em}.header-en{font-weight:500;color:var(--blue)}.sub{color:var(--muted);margin-top:4px;font-size:14px}.brand-tagline{display:inline-block;color:var(--blue);margin-top:9px;font:400 11px 'JetBrains Mono';letter-spacing:.04em}.header-actions,#authPanel{display:flex;align-items:center;gap:9px;flex-wrap:wrap}#userLabel{display:none;padding:5px 10px;color:var(--blue);border:1px solid var(--blue-deep);font:400 11px 'JetBrains Mono'}button{border:1px solid var(--line);background:var(--raised-2);color:var(--ink);padding:9px 14px;border-radius:var(--radius);cursor:pointer;font:500 13px 'Chakra Petch';transition:.2s;white-space:nowrap}button:hover{border-color:var(--blue);color:var(--blue);transform:translateY(-1px)}.primary,.line-login-btn{color:#04121c;background:var(--blue);border-color:var(--blue);font-weight:600}.primary:hover,.line-login-btn:hover{background:#61c6f4;color:#04121c}.danger{color:var(--red);border-color:rgba(240,121,121,.4);background:rgba(240,121,121,.06)}.ghost{color:var(--muted);background:transparent}.line-login-btn{padding:10px 15px}.stats{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:12px;margin-bottom:22px}.stat{min-height:92px;padding:16px 18px;display:flex;justify-content:center;flex-direction:column;gap:4px;background:rgba(16,20,28,.84);border:1px solid var(--line);border-top-color:rgba(47,178,238,.45)}.stat:hover,.card:hover{border-color:rgba(47,178,238,.55)}.n{font:600 29px/1 'Chakra Petch';color:var(--blue)}.l{color:var(--muted);font-size:13px}.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}.toolbar input,.toolbar select,.form-row input,.form-row select{width:100%;max-width:300px;background:var(--raised);border:1px solid var(--line);color:var(--ink);padding:10px 12px;border-radius:var(--radius);font:400 14px 'IBM Plex Sans Thai'}.toolbar input:focus,.toolbar select:focus,.form-row input:focus,.form-row select:focus{outline:none;border-color:var(--blue)}.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}.filter-chip{padding:6px 12px;color:var(--muted);font-size:12px}.filter-chip.active{border-color:var(--blue);color:var(--blue);background:rgba(47,178,238,.08)}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}.section{margin-bottom:28px}.section h2{font-size:20px}.card{min-height:180px;padding:17px;display:flex;flex-direction:column;gap:12px;background:rgba(16,20,28,.84);border:1px solid var(--line);border-left-color:rgba(47,178,238,.5);transition:.2s}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}.name{font:500 15px 'Chakra Petch';word-break:break-word}.pill{padding:4px 8px;border:1px solid transparent;font-size:11px;white-space:nowrap}.pill.ready{color:var(--green);border-color:rgba(126,217,87,.4);background:rgba(126,217,87,.07)}.pill.waiting{color:#e7bb6b;border-color:rgba(231,187,107,.4);background:rgba(231,187,107,.06)}.meta{color:var(--muted);font-size:13px;line-height:1.85}.count{color:var(--blue);font-weight:500}.actions{display:flex;gap:8px;margin-top:auto}.actions button{flex:1;padding:8px 12px}.actions button.ghost{flex:0 0 auto}.empty{padding:48px 18px;text-align:center;border:1px dashed var(--line);color:var(--muted);background:rgba(16,20,28,.5)}.auth-screen{display:grid;min-height:60vh;place-items:center}.auth-card{width:min(100%,500px);padding:38px 30px;text-align:center;background:var(--raised);border:1px solid var(--line);border-top-color:var(--blue);box-shadow:12px 12px 0 rgba(14,95,149,.22)}.auth-badge{display:inline-block;margin-bottom:18px;padding:5px 10px;border:1px solid var(--blue-deep);color:var(--blue);font:400 10px 'JetBrains Mono';letter-spacing:.08em}.auth-card h2{margin:0 0 10px;font-size:26px}.auth-card p{margin:0 0 25px;color:var(--muted);font-size:14px}.auth-actions{display:flex;align-items:center;flex-direction:column;gap:12px}.auth-actions .line-login-btn{width:100%;max-width:290px;padding:12px}.auth-divider{color:var(--muted);font-size:12px}.auth-guest-btn{background:transparent}.modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center}.modal.hidden{display:none}.modal-backdrop{position:absolute;inset:0;background:rgba(4,7,12,.78);backdrop-filter:blur(4px)}.modal-card{position:relative;width:min(92vw,480px);max-height:85vh;overflow:auto;padding:26px;background:var(--raised);border:1px solid var(--blue-deep);box-shadow:14px 14px 0 rgba(14,95,149,.3)}.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.modal-header h2{font-size:20px;margin:0}.icon-close{padding:0;width:34px;height:34px;font-size:20px}.modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.form-grid{display:flex;flex-direction:column;gap:16px}.form-row label{display:block;margin-bottom:6px;color:var(--muted);font-size:13px}.form-row input,.form-row select{max-width:none}.preset-list,.delete-list{display:flex;flex-direction:column;gap:7px}.preset-item,.delete-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);background:rgba(255,255,255,.015);font-size:13px}.delete-item{justify-content:space-between}.delete-item .email{font-weight:500}.delete-item .service{color:var(--muted);font-size:12px}.toast{position:fixed;z-index:200;bottom:28px;left:50%;max-width:90vw;padding:10px 18px;background:var(--raised-2);border:1px solid var(--blue-deep);color:var(--ink);font-size:13px;transform:translate(-50%,18px);opacity:0;transition:.25s}.toast.show{opacity:1;transform:translate(-50%,0)}.spinner{width:30px;height:30px;margin:0 auto 12px;border:3px solid rgba(47,178,238,.18);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:700px){.wrap{padding:0 20px 32px}header{padding:18px 0;min-height:auto;align-items:flex-start;flex-direction:column}h1{font-size:25px}.stats{grid-template-columns:repeat(2,minmax(100px,1fr))}.toolbar{align-items:stretch;flex-direction:column}.toolbar input,.toolbar select{max-width:none}.grid{grid-template-columns:1fr}.header-actions{width:100%}.auth-card{padding:30px 20px}}
+:root {
+  --bg: #0a0d13;
+  --raised: #10141c;
+  --raised-2: #151b25;
+  --blue: #2fb2ee;
+  --blue-deep: #0e5f95;
+  --ink: #eef1f4;
+  --muted: #7c8798;
+  --line: rgba(201, 211, 220, 0.14);
+  --green: #7ed957;
+  --red: #f07979;
+  --radius: 2px;
+}
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    300 16px/1.7 "IBM Plex Sans Thai",
+    sans-serif;
+}
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(201, 211, 220, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201, 211, 220, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    #000 40%,
+    transparent 100%
+  );
+}
+.wrap {
+  position: relative;
+  z-index: 1;
+  width: min(1180px, 100%);
+  min-height: 100vh;
+  margin: auto;
+  padding: 0 32px 48px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  min-height: 96px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+h1,
+h2,
+h3 {
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 600;
+}
+h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.header-en {
+  font-weight: 500;
+  color: var(--blue);
+}
+.sub {
+  color: var(--muted);
+  margin-top: 4px;
+  font-size: 14px;
+}
+.brand-tagline {
+  display: inline-block;
+  color: var(--blue);
+  margin-top: 9px;
+  font: 400 11px "JetBrains Mono";
+  letter-spacing: 0.04em;
+}
+.header-actions,
+#authPanel {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+#userLabel {
+  display: none;
+  padding: 5px 10px;
+  color: var(--blue);
+  border: 1px solid var(--blue-deep);
+  font: 400 11px "JetBrains Mono";
+}
+button {
+  border: 1px solid var(--line);
+  background: var(--raised-2);
+  color: var(--ink);
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: 500 13px "Chakra Petch";
+  transition: 0.2s;
+  white-space: nowrap;
+}
+button:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  transform: translateY(-1px);
+}
+.primary,
+.line-login-btn {
+  color: #04121c;
+  background: var(--blue);
+  border-color: var(--blue);
+  font-weight: 600;
+}
+.primary:hover,
+.line-login-btn:hover {
+  background: #61c6f4;
+  color: #04121c;
+}
+.danger {
+  color: var(--red);
+  border-color: rgba(240, 121, 121, 0.4);
+  background: rgba(240, 121, 121, 0.06);
+}
+.ghost {
+  color: var(--muted);
+  background: transparent;
+}
+.line-login-btn {
+  padding: 10px 15px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.stat {
+  min-height: 92px;
+  padding: 16px 18px;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(16, 20, 28, 0.84);
+  border: 1px solid var(--line);
+  border-top-color: rgba(47, 178, 238, 0.45);
+}
+.stat:hover,
+.card:hover {
+  border-color: rgba(47, 178, 238, 0.55);
+}
+.n {
+  font: 600 29px/1 "Chakra Petch";
+  color: var(--blue);
+}
+.l {
+  color: var(--muted);
+  font-size: 13px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.toolbar input,
+.toolbar select,
+.form-row input,
+.form-row select {
+  width: 100%;
+  max-width: 300px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font: 400 14px "IBM Plex Sans Thai";
+}
+.toolbar input:focus,
+.toolbar select:focus,
+.form-row input:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.filter-chip {
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.filter-chip.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: rgba(47, 178, 238, 0.08);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.section {
+  margin-bottom: 28px;
+}
+.section h2 {
+  font-size: 20px;
+}
+.card {
+  min-height: 180px;
+  padding: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(16, 20, 28, 0.84);
+  border: 1px solid var(--line);
+  border-left-color: rgba(47, 178, 238, 0.5);
+  transition: 0.2s;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.name {
+  font: 500 15px "Chakra Petch";
+  word-break: break-word;
+}
+.pill {
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pill.ready {
+  color: var(--green);
+  border-color: rgba(126, 217, 87, 0.4);
+  background: rgba(126, 217, 87, 0.07);
+}
+.pill.waiting {
+  color: #e7bb6b;
+  border-color: rgba(231, 187, 107, 0.4);
+  background: rgba(231, 187, 107, 0.06);
+}
+.meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.85;
+}
+.count {
+  color: var(--blue);
+  font-weight: 500;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.actions button {
+  flex: 1;
+  padding: 8px 12px;
+}
+.actions button.ghost {
+  flex: 0 0 auto;
+}
+.empty {
+  padding: 48px 18px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  background: rgba(16, 20, 28, 0.5);
+}
+.auth-screen {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+}
+.auth-card {
+  width: min(100%, 500px);
+  padding: 38px 30px;
+  text-align: center;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-top-color: var(--blue);
+  box-shadow: 12px 12px 0 rgba(14, 95, 149, 0.22);
+}
+.auth-badge {
+  display: inline-block;
+  margin-bottom: 18px;
+  padding: 5px 10px;
+  border: 1px solid var(--blue-deep);
+  color: var(--blue);
+  font: 400 10px "JetBrains Mono";
+  letter-spacing: 0.08em;
+}
+.auth-card h2 {
+  margin: 0 0 10px;
+  font-size: 26px;
+}
+.auth-card p {
+  margin: 0 0 25px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.auth-actions {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-actions .line-login-btn {
+  width: 100%;
+  max-width: 290px;
+  padding: 12px;
+}
+.auth-divider {
+  color: var(--muted);
+  font-size: 12px;
+}
+.auth-guest-btn {
+  background: transparent;
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+}
+.modal.hidden {
+  display: none;
+}
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.78);
+  backdrop-filter: blur(4px);
+}
+.modal-card {
+  position: relative;
+  width: min(92vw, 480px);
+  max-height: 85vh;
+  overflow: auto;
+  padding: 26px;
+  background: var(--raised);
+  border: 1px solid var(--blue-deep);
+  box-shadow: 14px 14px 0 rgba(14, 95, 149, 0.3);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.modal-header h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.icon-close {
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 20px;
+}
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.form-row label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.form-row input,
+.form-row select {
+  max-width: none;
+}
+.preset-list,
+.delete-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.preset-item,
+.delete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.015);
+  font-size: 13px;
+}
+.delete-item {
+  justify-content: space-between;
+}
+.delete-item .email {
+  font-weight: 500;
+}
+.delete-item .service {
+  color: var(--muted);
+  font-size: 12px;
+}
+.toast {
+  position: fixed;
+  z-index: 200;
+  bottom: 28px;
+  left: 50%;
+  max-width: 90vw;
+  padding: 10px 18px;
+  background: var(--raised-2);
+  border: 1px solid var(--blue-deep);
+  color: var(--ink);
+  font-size: 13px;
+  transform: translate(-50%, 18px);
+  opacity: 0;
+  transition: 0.25s;
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.spinner {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 12px;
+  border: 3px solid rgba(47, 178, 238, 0.18);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 700px) {
+  .wrap {
+    padding: 0 20px 32px;
+  }
+  header {
+    padding: 18px 0;
+    min-height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  h1 {
+    font-size: 25px;
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .toolbar input,
+  .toolbar select {
+    max-width: none;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .header-actions {
+    width: 100%;
+  }
+  .auth-card {
+    padding: 30px 20px;
+  }
+}

@@ -1,82 +1,104 @@
 <!doctype html>
 <html lang="th">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>กำลังเข้าสู่ระบบ...</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, #0b1020, #0f172a 55%, #101827);
-      font-family: 'Inter', system-ui, sans-serif;
-      color: #eef4ff;
-    }
-    .box {
-      background: rgba(18, 26, 46, 0.85);
-      border: 1px solid #293552;
-      border-radius: 20px;
-      padding: 36px 32px;
-      text-align: center;
-      box-shadow: 0 24px 60px rgba(5, 10, 28, 0.5);
-      max-width: 440px;
-      width: calc(100% - 32px);
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid rgba(125, 211, 252, 0.2);
-      border-top-color: #7dd3fc;
-      border-radius: 50%;
-      margin: 0 auto 20px;
-      animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    h2 { margin: 0 0 10px; font-weight: 700; }
-    p { margin: 0; color: #a9b7d1; font-size: 14px; }
-    .error { color: #f87171; margin-top: 16px; font-size: 13px; display: none; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <div class="spinner"></div>
-    <h2>กำลังเข้าสู่ระบบ</h2>
-    <p>รอสักครู่ กำลังกลับไปยังหน้าแอป...</p>
-    <p class="error" id="errorMsg"></p>
-  </div>
-
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script>
-    // This callback page handles the LIFF redirect after LINE login.
-    // After LIFF login, LINE redirects back here (or to index.html).
-    // We simply redirect to the main page — initApp() in app.js
-    // will detect the LIFF session and auto-login.
-
-    async function handleCallback() {
-      try {
-        // Small delay to let LIFF handle the auth code
-        await new Promise((r) => setTimeout(r, 500));
-
-        // Check if there's a LIFF access token in URL (hash fragment)
-        // Just redirect — the main app will handle LIFF session
-        window.location.replace("./index.html");
-      } catch (err) {
-        console.error("Callback error:", err);
-        const el = document.getElementById("errorMsg");
-        el.textContent = "เกิดข้อผิดพลาด: " + err.message;
-        el.style.display = "block";
-
-        // Redirect anyway after 3 seconds
-        setTimeout(() => window.location.replace("./index.html"), 3000);
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>กำลังเข้าสู่ระบบ...</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #0b1020, #0f172a 55%, #101827);
+        font-family: "Inter", system-ui, sans-serif;
+        color: #eef4ff;
       }
-    }
+      .box {
+        background: rgba(18, 26, 46, 0.85);
+        border: 1px solid #293552;
+        border-radius: 20px;
+        padding: 36px 32px;
+        text-align: center;
+        box-shadow: 0 24px 60px rgba(5, 10, 28, 0.5);
+        max-width: 440px;
+        width: calc(100% - 32px);
+      }
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(125, 211, 252, 0.2);
+        border-top-color: #7dd3fc;
+        border-radius: 50%;
+        margin: 0 auto 20px;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0;
+        color: #a9b7d1;
+        font-size: 14px;
+      }
+      .error {
+        color: #f87171;
+        margin-top: 16px;
+        font-size: 13px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="spinner"></div>
+      <h2>กำลังเข้าสู่ระบบ</h2>
+      <p>รอสักครู่ กำลังกลับไปยังหน้าแอป...</p>
+      <p class="error" id="errorMsg"></p>
+    </div>
 
-    handleCallback();
-  </script>
-</body>
+    <script
+      charset="utf-8"
+      src="https://static.line-scdn.net/liff/edge/2/sdk.js"
+    ></script>
+    <script>
+      // This callback page handles the LIFF redirect after LINE login.
+      // After LIFF login, LINE redirects back here (or to index.html).
+      // We simply redirect to the main page — initApp() in app.js
+      // will detect the LIFF session and auto-login.
+
+      async function handleCallback() {
+        try {
+          // Small delay to let LIFF handle the auth code
+          await new Promise((r) => setTimeout(r, 500));
+
+          // Check if there's a LIFF access token in URL (hash fragment)
+          // Just redirect — the main app will handle LIFF session
+          window.location.replace("./home.html");
+        } catch (err) {
+          console.error("Callback error:", err);
+          const el = document.getElementById("errorMsg");
+          el.textContent = "เกิดข้อผิดพลาด: " + err.message;
+          el.style.display = "block";
+
+          // Redirect anyway after 3 seconds
+          setTimeout(() => window.location.replace("./home.html"), 3000);
+        }
+      }
+
+      handleCallback();
+    </script>
+  </body>
 </html>

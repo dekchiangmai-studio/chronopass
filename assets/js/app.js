@@ -8,7 +8,8 @@ const CFG = window.APP_CONFIG || {};
 const LIFF_ID = (CFG.LIFF_ID || "").trim();
 const SUPABASE_URL = (CFG.SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "").trim();
 const SUPABASE_ANON_KEY = (CFG.SUPABASE_ANON_KEY || "").trim();
-const KEY = "chronopass-accounts-v1";
+const GUEST_KEY = "chronopass-guest-accounts-v1";
+const ACCOUNT_CACHE_TTL_MS = 10 * 60 * 1000;
 
 // ---- Supabase client ----
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
@@ -26,8 +27,27 @@ let currentServiceFilter = "all";
 // ============================================
 
 function getLocal() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  try { return JSON.parse(localStorage.getItem(GUEST_KEY)) || []; }
   catch { return []; }
+}
+
+function accountCacheKey() {
+  return currentUser?.line_user_id ? `chronopass-accounts-v1:${currentUser.line_user_id}` : null;
+}
+
+function getAccountCache() {
+  const key = accountCacheKey();
+  if (!key) return null;
+  try {
+    const cached = JSON.parse(localStorage.getItem(key));
+    return cached?.expiresAt > Date.now() && Array.isArray(cached.accounts) ? cached.accounts : null;
+  } catch { return null; }
+}
+
+function setAccountCache(value = accounts) {
+  const key = accountCacheKey();
+  if (!key) return;
+  localStorage.setItem(key, JSON.stringify({ expiresAt: Date.now() + ACCOUNT_CACHE_TTL_MS, accounts: value }));
 }
 
 function toast(msg) {
@@ -37,6 +57,12 @@ function toast(msg) {
   el.classList.add("show");
   clearTimeout(window._toastTimer);
   window._toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+  })[character]);
 }
 
 // Email matching is case-insensitive, consistent with the database constraint.
@@ -61,9 +87,22 @@ function hasPaidNotificationAccess(user = currentUser) {
     || new Date(user.subscription_current_period_end).getTime() > Date.now();
 }
 
+async function callAppData(action, payload = {}) {
+  const idToken = window.liff?.getIDToken?.();
+  if (!idToken || !SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('กรุณาเข้าสู่ระบบด้วย LINE ใหม่');
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ action, idToken, ...payload }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'ไม่สามารถเชื่อมต่อข้อมูลได้');
+  return body;
+}
+
 async function startStripeCheckout() {
   if (!currentUser || currentUser.is_guest) {
-    toast('กรุณาเข้าสู่ระบบด้วย LINE ก่อนสมัครแจ้งเตือน');
+    signInWithLine();
     return;
   }
   if (!sb || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -97,6 +136,35 @@ async function startStripeCheckout() {
   }
 }
 
+async function cancelStripeSubscription() {
+  if (!currentUser || currentUser.is_guest || currentUser.subscription_cancel_at_period_end) return;
+  if (!window.confirm('ยืนยันการยกเลิกสมาชิก? คุณยังใช้งานแจ้งเตือน LINE ได้จนจบรอบบิลปัจจุบัน')) return;
+  const idToken = window.liff?.getIDToken?.();
+  if (!idToken || !sb) {
+    toast('กรุณาเข้าสู่ระบบด้วย LINE ใหม่ก่อนยกเลิกสมาชิก');
+    return;
+  }
+  const button = document.getElementById('cancelSubscriptionBtn');
+  if (button) { button.disabled = true; button.textContent = 'กำลังยกเลิก...'; }
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/cancel-stripe-subscription`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ idToken }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'ยกเลิกสมาชิกไม่สำเร็จ');
+    currentUser.subscription_cancel_at_period_end = true;
+    if (body.currentPeriodEnd) currentUser.subscription_current_period_end = new Date(body.currentPeriodEnd * 1000).toISOString();
+    updateAuthUI();
+    toast('ยกเลิกการต่ออายุแล้ว คุณยังใช้ได้จนจบรอบบิล');
+  } catch (err) {
+    console.error('Stripe cancellation error:', err);
+    toast(err.message || 'ยกเลิกสมาชิกไม่สำเร็จ');
+    if (button) { button.disabled = false; button.textContent = 'ยกเลิกสมาชิก'; }
+  }
+}
+
 // ============================================
 // Auth UI
 // ============================================
@@ -109,6 +177,7 @@ function updateAuthUI() {
   const deleteBtn = document.getElementById("deleteBtn");
   const upgradeBtn = document.getElementById("upgradeBtn");
   const membershipLabel = document.getElementById("membershipLabel");
+  const cancelSubscriptionBtn = document.getElementById("cancelSubscriptionBtn");
 
   if (currentUser) {
     if (loginBtn) loginBtn.style.display = "none";
@@ -123,10 +192,22 @@ function updateAuthUI() {
 
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
-    if (upgradeBtn) upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+    if (upgradeBtn) {
+      upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
+      upgradeBtn.textContent = currentUser.is_guest ? "เชื่อมต่อ LINE" : "แจ้งเตือน LINE ฿49/เดือน";
+    }
+    if (cancelSubscriptionBtn) {
+      const canCancel = hasPaidNotificationAccess() && currentUser.stripe_subscription_id && !currentUser.subscription_cancel_at_period_end;
+      cancelSubscriptionBtn.style.display = canCancel ? "inline-flex" : "none";
+    }
     if (membershipLabel) {
       membershipLabel.style.display = hasPaidNotificationAccess() ? "inline" : "none";
-      membershipLabel.textContent = hasPaidNotificationAccess() ? "LINE แจ้งเตือน: เปิดใช้แล้ว" : "";
+      const endDate = currentUser.subscription_current_period_end
+        ? new Date(currentUser.subscription_current_period_end).toLocaleDateString('th-TH')
+        : '';
+      membershipLabel.textContent = hasPaidNotificationAccess()
+        ? (currentUser.subscription_cancel_at_period_end ? `LINE แจ้งเตือน: ใช้ได้ถึง ${endDate}` : "LINE แจ้งเตือน: เปิดใช้แล้ว")
+        : "";
     }
   } else {
     if (loginBtn) loginBtn.style.display = "inline-flex";
@@ -138,6 +219,7 @@ function updateAuthUI() {
     if (addBtn) addBtn.style.display = "none";
     if (deleteBtn) deleteBtn.style.display = "none";
     if (upgradeBtn) upgradeBtn.style.display = "none";
+    if (cancelSubscriptionBtn) cancelSubscriptionBtn.style.display = "none";
     if (membershipLabel) membershipLabel.style.display = "none";
   }
 }
@@ -198,25 +280,12 @@ async function ensureUserInDB(profile) {
     status: "active",
   };
 
-  if (!sb) {
-    return { id: profile.userId, ...payload };
-  }
-
   try {
-    const { data, error } = await sb
-      .from("users")
-      .upsert(payload, { onConflict: "line_user_id" })
-      .select();
-
-    if (error) {
-      console.warn("Supabase user upsert notice (fallback to local user):", error);
-      return { id: profile.userId, ...payload };
-    }
-
-    return data?.[0] || { id: profile.userId, ...payload };
+    const result = await callAppData('bootstrap', { profile });
+    return result.user || null;
   } catch (err) {
-    console.warn("Supabase request error:", err);
-    return { id: profile.userId, ...payload };
+    console.error("Profile bootstrap error:", err);
+    throw err;
   }
 }
 
@@ -257,7 +326,7 @@ async function handleLiffLogin() {
     if (!profile) throw new Error("ดึงข้อมูล LINE ไม่ได้");
 
     const user = await ensureUserInDB(profile);
-    if (!user) throw new Error("ไม่สามารถบันทึกผู้ใช้ได้");
+    if (!user) throw new Error("ยังไม่สามารถบันทึกผู้ใช้ได้ กรุณาลองใหม่อีกครั้ง");
 
     currentUser = user;
     sessionStorage.setItem("line_user_id", user.line_user_id);
@@ -323,19 +392,25 @@ async function signOut() {
 // ============================================
 
 async function hydrateAccounts() {
-  accounts = getLocal();
+  // Guest data is intentionally local only.
+  if (!currentUser) {
+    accounts = [];
+    return;
+  }
+  if (currentUser.is_guest) {
+    accounts = getLocal();
+    return;
+  }
 
-  // If Guest mode or no Supabase, only use localStorage
-  if (!sb || !currentUser || currentUser.is_guest) return;
+  const cached = getAccountCache();
+  if (cached) {
+    accounts = cached;
+    return;
+  }
 
   try {
-    const { data, error } = await sb
-      .from("accounts")
-      .select("*")
-      .eq("user_id", currentUser.id)
-      .order("created_at", { ascending: false });
-
-    if (!error && Array.isArray(data) && data.length) {
+    const { accounts: data } = await callAppData('listAccounts');
+    if (Array.isArray(data)) {
       accounts = data.map((r) => ({
         id: Number(r.id),
         service: r.service,
@@ -347,21 +422,21 @@ async function hydrateAccounts() {
         lastUsed: r.last_used ? Number(r.last_used) : null,
         user_id: r.user_id,
       }));
-    } else {
-      accounts = getLocal().filter((a) => a.user_id === currentUser.id || !a.user_id);
+      setAccountCache();
     }
   } catch (err) {
     console.warn("Hydrate accounts error:", err);
   }
 
-  localStorage.setItem(KEY, JSON.stringify(accounts));
 }
 
 async function saveAccounts() {
-  localStorage.setItem(KEY, JSON.stringify(accounts));
-
-  // If Guest mode or no Supabase, never write to Supabase
-  if (!sb || !currentUser || currentUser.is_guest) return;
+  if (!currentUser) return;
+  if (currentUser.is_guest) {
+    localStorage.setItem(GUEST_KEY, JSON.stringify(accounts));
+    return;
+  }
+  setAccountCache();
 
   try {
     const rows = accounts.map((a) => ({
@@ -376,8 +451,10 @@ async function saveAccounts() {
       last_used: a.lastUsed ? Number(a.lastUsed) : null,
     }));
 
-    const { error } = await sb.from("accounts").upsert(rows, { onConflict: "id" });
-    if (error) console.warn("Save accounts DB notice:", error);
+    await callAppData('upsertAccounts', { accounts: rows.map((row) => ({
+      id: row.id, accountName: row.account_name, label: row.label, service: row.service,
+      resetMode: row.reset_mode, resetHours: row.reset_hours, resetTime: row.reset_time, lastUsed: row.last_used,
+    })) });
   } catch (err) {
     console.warn("Save accounts DB error:", err);
   }
@@ -488,11 +565,10 @@ function deleteAccount(id) {
   const t = accounts.find((x) => x.id === id);
   if (!t) return;
   accounts = accounts.filter((x) => x.id !== id);
+  if (currentUser && !currentUser.is_guest) setAccountCache();
 
-  if (sb && currentUser && !currentUser.is_guest) {
-    sb.from("accounts").delete().eq("id", id).then(({ error }) => {
-      if (error) console.error("Delete from DB:", error);
-    });
+  if (currentUser && !currentUser.is_guest) {
+    callAppData('deleteAccount', { accountId: id }).catch((error) => console.error("Delete from DB:", error));
   }
 
   saveAccounts();
@@ -597,13 +673,13 @@ function openEditModal(id) {
     <div class="form-grid">
       <div class="form-row">
         <label for="editAccountName">ชื่อบัญชี / อีเมล</label>
-        <input id="editAccountName" value="${getAccountName(a)}">
+        <input id="editAccountName" value="${escapeHtml(getAccountName(a))}">
       </div>
       <div class="form-row">
         <label for="editPreset">บริการ AI</label>
         <select id="editPreset">
           ${Object.entries(PRESETS).map(([k, v]) =>
-            `<option value="${k}" ${a.service === v.name ? "selected" : ""}>${v.label}</option>`
+            `<option value="${k}" ${a.service === v.name ? "selected" : ""}>${escapeHtml(v.label)}</option>`
           ).join("")}
         </select>
       </div>
@@ -666,8 +742,8 @@ function openDeleteModal() {
       ${accounts.map((a) => `
         <div class="delete-item">
           <div>
-            <div class="email">${getAccountName(a)}</div>
-            <div class="service">${a.service}</div>
+            <div class="email">${escapeHtml(getAccountName(a))}</div>
+            <div class="service">${escapeHtml(a.service)}</div>
           </div>
           <button class="danger" type="button" onclick="deleteAccount(${a.id})">ลบ</button>
         </div>
@@ -769,18 +845,18 @@ function render() {
   const filtered = accounts.filter((a) => {
     const hit = !q || `${getAccountName(a)} ${a.label} ${a.service}`.toLowerCase().includes(q);
     const st = accountState(a);
-    const statusCat = !a.lastUsed ? "ready" : st === "ready" ? "used" : "waiting";
-    return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || statusCat === stf);
+    return hit && (currentServiceFilter === "all" || a.service === currentServiceFilter) && (stf === "all" || st === stf);
   });
 
   // Service chips
-  const services = [...new Set(accounts.map((a) => a.service))];
+  const services = [...new Set(accounts.map((a) => a.service))]
+    .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
   const filterRow = document.getElementById("aiFilters");
   if (filterRow) {
     filterRow.innerHTML = [
       `<button class="filter-chip ${currentServiceFilter === "all" ? "active" : ""}" type="button" data-svc="all">ทั้งหมด</button>`,
       ...services.map((s) =>
-        `<button class="filter-chip ${currentServiceFilter === s ? "active" : ""}" type="button" data-svc="${s}">${s}</button>`
+        `<button class="filter-chip ${currentServiceFilter === s ? "active" : ""}" type="button" data-svc="${escapeHtml(s)}">${escapeHtml(s)}</button>`
       ),
     ].join("");
 
@@ -807,7 +883,7 @@ function render() {
     overview.innerHTML = services.map((svc) => {
       const arr = accounts.filter((a) => a.service === svc);
       const r = arr.filter((a) => accountState(a) === "ready").length;
-      return `<div class="stat"><div class="n">${arr.length}</div><div class="l">${svc} · พร้อมใช้ ${r}</div></div>`;
+      return `<div class="stat"><div class="n">${arr.length}</div><div class="l">${escapeHtml(svc)} · พร้อมใช้ ${r}</div></div>`;
     }).join("");
   }
 
@@ -824,6 +900,10 @@ function render() {
   }
 
   for (const [service, list] of Object.entries(groups)) {
+    list.sort((a, b) => {
+      const statusOrder = Number(accountState(a) === 'waiting') - Number(accountState(b) === 'waiting');
+      return statusOrder || getAccountName(a).localeCompare(getAccountName(b), 'th', { sensitivity: 'base' });
+    });
     const all = accounts.filter((a) => a.service === service);
     const rdy = all.filter((a) => accountState(a) === "ready").length;
     const wt = all.length - rdy;
@@ -832,7 +912,7 @@ function render() {
     sec.className = "section";
     sec.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <h2>${service}</h2>
+        <h2>${escapeHtml(service)}</h2>
         <div style="color:var(--muted);font-size:13px">${all.length} บัญชี · พร้อม ${rdy} · รอ ${wt}</div>
       </div>
       <div class="grid">${list.map((a) => {
@@ -844,7 +924,7 @@ function render() {
 
         return `<div class="card">
           <div class="top">
-            <div style="flex:1;min-width:0"><div class="name">${getAccountName(a)}</div></div>
+            <div style="flex:1;min-width:0"><div class="name">${escapeHtml(getAccountName(a))}</div></div>
             <div class="pill ${cls}">${st === "ready" ? "พร้อมใช้" : "รอรีเซ็ต"}</div>
           </div>
           <div class="meta">
@@ -877,6 +957,7 @@ async function initApp() {
   document.getElementById("addBtn")?.addEventListener("click", openAddModal);
   document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
   document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
+  document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", cancelStripeSubscription);
 
   // 1) Check Guest mode first
   const isGuest = localStorage.getItem("guest_mode") === "true";
@@ -891,20 +972,8 @@ async function initApp() {
     // 2) Restore LINE session from sessionStorage
     const storedId = sessionStorage.getItem("line_user_id");
     if (storedId) {
-      if (sb) {
-        try {
-          const { data, error } = await sb
-            .from("users")
-            .select("*")
-            .eq("line_user_id", storedId)
-            .single();
-          if (!error && data) currentUser = data;
-        } catch (_) {}
-      }
-      if (!currentUser) {
-        const cachedName = sessionStorage.getItem("line_display_name") || "LINE User";
-        currentUser = { id: storedId, line_user_id: storedId, display_name: cachedName };
-      }
+      const cachedName = sessionStorage.getItem("line_display_name") || "LINE User";
+      currentUser = { id: storedId, line_user_id: storedId, display_name: cachedName };
     }
   }
 
@@ -914,10 +983,8 @@ async function initApp() {
   let loggedInViaLiff = false;
   // 4) Auto-login from LIFF if not in guest mode and not restored from session
   if (!isGuest && liffReady && window.liff.isLoggedIn()) {
-    if (!currentUser) {
-      await handleLiffLogin();
-      loggedInViaLiff = true;
-    }
+    await handleLiffLogin();
+    loggedInViaLiff = true;
   }
 
   // 5) Clean URL params if returning from LINE Login (e.g. ?code=...&state=...)
