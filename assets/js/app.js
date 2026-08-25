@@ -269,6 +269,35 @@ async function getLiffProfile() {
   }
 }
 
+async function ensureDbUser() {
+  if (!currentUser || currentUser.is_guest) return null;
+  if (currentUser.id && Number.isSafeInteger(Number(currentUser.id)) && Number(currentUser.id) > 0) {
+    return currentUser;
+  }
+  const lineId = currentUser.line_user_id;
+  if (!lineId) return null;
+
+  if (sb) {
+    try {
+      const { data } = await sb
+        .from("users")
+        .select("*")
+        .eq("line_user_id", lineId)
+        .maybeSingle();
+
+      if (data && data.id) {
+        currentUser = { ...currentUser, ...data, id: Number(data.id) };
+        sessionStorage.setItem("line_db_id", String(data.id));
+        sessionStorage.setItem("line_user_obj", JSON.stringify(currentUser));
+        return currentUser;
+      }
+    } catch (err) {
+      console.warn("ensureDbUser query failed:", err);
+    }
+  }
+  return currentUser;
+}
+
 async function ensureUserInDB(profile) {
   if (!profile?.userId) return null;
 
@@ -282,11 +311,32 @@ async function ensureUserInDB(profile) {
 
   try {
     const result = await callAppData('bootstrap', { profile });
-    return result.user || null;
+    if (result?.user) return result.user;
   } catch (err) {
-    console.error("Profile bootstrap error:", err);
-    throw err;
+    console.warn("Profile bootstrap via Edge Function failed, trying direct Supabase:", err);
   }
+
+  if (sb) {
+    try {
+      const { data: existing } = await sb
+        .from('users')
+        .select('*')
+        .eq('line_user_id', String(profile.userId))
+        .maybeSingle();
+      if (existing) return existing;
+
+      const { data: created, error: insErr } = await sb
+        .from('users')
+        .insert(payload)
+        .select()
+        .single();
+      if (!insErr && created) return created;
+    } catch (e) {
+      console.warn("Direct Supabase user bootstrap error:", e);
+    }
+  }
+
+  return null;
 }
 
 // Sign in with LINE (LIFF)
@@ -331,6 +381,8 @@ async function handleLiffLogin() {
     currentUser = user;
     sessionStorage.setItem("line_user_id", user.line_user_id);
     sessionStorage.setItem("line_display_name", user.display_name || "");
+    sessionStorage.setItem("line_db_id", String(user.id));
+    sessionStorage.setItem("line_user_obj", JSON.stringify(user));
     localStorage.removeItem("guest_mode");
 
     // Clear URL query parameters from LINE redirect
@@ -402,12 +454,39 @@ async function hydrateAccounts() {
     return;
   }
 
-  const cached = getAccountCache();
-  if (cached) {
-    accounts = cached;
-    return;
+  await ensureDbUser();
+  const userId = Number(currentUser.id);
+
+  // 1) Direct Supabase query (works across PC & mobile)
+  if (sb && Number.isSafeInteger(userId) && userId > 0) {
+    try {
+      const { data, error } = await sb
+        .from('accounts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        accounts = data.map((r) => ({
+          id: Number(r.id),
+          service: r.service,
+          label: r.label || r.account_name || r.email,
+          accountName: r.account_name || r.email,
+          resetMode: r.reset_mode || "hours",
+          resetHours: Number(r.reset_hours || 6),
+          resetTime: r.reset_time || "06:00",
+          lastUsed: r.last_used ? Number(r.last_used) : null,
+          user_id: r.user_id,
+        }));
+        setAccountCache();
+        return;
+      }
+    } catch (err) {
+      console.warn("Hydrate accounts direct Supabase error:", err);
+    }
   }
 
+  // 2) Edge Function listAccounts
   try {
     const { accounts: data } = await callAppData('listAccounts');
     if (Array.isArray(data)) {
@@ -423,40 +502,85 @@ async function hydrateAccounts() {
         user_id: r.user_id,
       }));
       setAccountCache();
+      return;
     }
   } catch (err) {
-    console.warn("Hydrate accounts error:", err);
+    console.warn("Hydrate accounts Edge function error:", err);
   }
 
+  // 3) Fallback to local cache
+  const cached = getAccountCache();
+  if (cached) {
+    accounts = cached;
+  }
 }
 
 async function saveAccounts() {
-  if (!currentUser) return;
+  if (!currentUser) return false;
   if (currentUser.is_guest) {
     localStorage.setItem(GUEST_KEY, JSON.stringify(accounts));
-    return;
+    return true;
   }
-  setAccountCache();
 
-  try {
-    const rows = accounts.map((a) => ({
-      id: Number(a.id),
-      user_id: currentUser.id,
-      account_name: getAccountName(a),
-      label: String(a.label || getAccountName(a)).trim(),
-      service: String(a.service || "Copilot"),
-      reset_mode: String(a.resetMode || "hours"),
-      reset_hours: Number(a.resetHours || 6),
-      reset_time: String(a.resetTime || "06:00"),
-      last_used: a.lastUsed ? Number(a.lastUsed) : null,
-    }));
+  await ensureDbUser();
+  const userId = Number(currentUser.id);
+  if (!Number.isSafeInteger(userId) || userId < 1) {
+    console.warn("Cannot save accounts: Invalid user ID", currentUser);
+    toast("⚠️ ไม่พบข้อมูลผู้ใช้ใน Supabase กรุณาออกจากระบบแล้วเข้าใหม่");
+    return false;
+  }
 
-    await callAppData('upsertAccounts', { accounts: rows.map((row) => ({
-      id: row.id, accountName: row.account_name, label: row.label, service: row.service,
-      resetMode: row.reset_mode, resetHours: row.reset_hours, resetTime: row.reset_time, lastUsed: row.last_used,
-    })) });
-  } catch (err) {
-    console.warn("Save accounts DB error:", err);
+  const rows = accounts.map((a) => ({
+    id: Number(a.id),
+    user_id: userId,
+    account_name: getAccountName(a),
+    label: String(a.label || getAccountName(a)).trim(),
+    service: String(a.service || "Copilot"),
+    reset_mode: String(a.resetMode || "hours"),
+    reset_hours: Number(a.resetHours || 6),
+    reset_time: String(a.resetTime || "06:00"),
+    last_used: a.lastUsed ? Number(a.lastUsed) : null,
+  }));
+
+  let saved = false;
+  let lastError = null;
+
+  // 1) Direct Supabase client upsert (Fast and directly connects from PC)
+  if (sb) {
+    try {
+      const { error } = await sb.from('accounts').upsert(rows, { onConflict: 'id' });
+      if (!error) {
+        saved = true;
+      } else {
+        lastError = error;
+        console.warn("Supabase direct upsert error:", error);
+      }
+    } catch (e) {
+      lastError = e;
+      console.warn("Supabase direct client error:", e);
+    }
+  }
+
+  // 2) Fallback to Edge function callAppData
+  if (!saved) {
+    try {
+      await callAppData('upsertAccounts', { accounts: rows.map((row) => ({
+        id: row.id, accountName: row.account_name, label: row.label, service: row.service,
+        resetMode: row.reset_mode, resetHours: row.reset_hours, resetTime: row.reset_time, lastUsed: row.last_used,
+      })) });
+      saved = true;
+    } catch (err) {
+      if (!lastError) lastError = err;
+      console.warn("Save accounts DB error:", err);
+    }
+  }
+
+  if (saved) {
+    setAccountCache();
+    return true;
+  } else {
+    toast("⚠️ บันทึกลง Supabase ไม่สำเร็จ: " + (lastError?.message || "กรุณาเข้าสู่ระบบใหม่"));
+    return false;
   }
 }
 
@@ -550,28 +674,45 @@ function lastUsedText(a) {
 }
 
 // ---- Actions ----
-function useAccount(id) {
+async function useAccount(id) {
   if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
   if (accountState(a) !== "ready") { toast("บัญชีนี้ยังไม่รีเซ็ต"); return; }
   a.lastUsed = Date.now();
-  saveAccounts();
   render();
   toast(`${a.service} — ${getAccountName(a)} บันทึกแล้ว`);
+  await saveAccounts();
 }
 
-function deleteAccount(id) {
+async function deleteAccount(id) {
   const t = accounts.find((x) => x.id === id);
   if (!t) return;
   accounts = accounts.filter((x) => x.id !== id);
-  if (currentUser && !currentUser.is_guest) setAccountCache();
 
   if (currentUser && !currentUser.is_guest) {
-    callAppData('deleteAccount', { accountId: id }).catch((error) => console.error("Delete from DB:", error));
+    await ensureDbUser();
+    const userId = Number(currentUser.id);
+
+    if (sb && Number.isSafeInteger(userId) && userId > 0) {
+      try {
+        await sb.from('accounts').delete().eq('id', id).eq('user_id', userId);
+      } catch (err) {
+        console.warn("Direct Supabase delete error:", err);
+      }
+    }
+
+    try {
+      await callAppData('deleteAccount', { accountId: id });
+    } catch (error) {
+      console.warn("Edge function delete error:", error);
+    }
+
+    setAccountCache();
+  } else {
+    localStorage.setItem(GUEST_KEY, JSON.stringify(accounts));
   }
 
-  saveAccounts();
   render();
   closeModal();
   toast(`ลบ ${t.label} แล้ว`);
@@ -621,7 +762,7 @@ function openAddModal() {
   setTimeout(() => document.getElementById("newAccountName")?.focus(), 50);
 }
 
-function addAccount() {
+async function addAccount() {
   if (!currentUser) { toast("กรุณาเข้าสู่ระบบก่อน"); return; }
 
   const accountName = document.getElementById("newAccountName").value.trim();
@@ -636,6 +777,10 @@ function addAccount() {
   if (duplicate) {
     toast(`มีบัญชี ${duplicate} สำหรับชื่อนี้อยู่แล้ว`);
     return;
+  }
+
+  if (!currentUser.is_guest) {
+    await ensureDbUser();
   }
 
   const newList = selected.map((key) => {
@@ -654,10 +799,14 @@ function addAccount() {
   });
 
   accounts = [...newList, ...accounts];
-  saveAccounts();
-  render();
   closeModal();
-  toast(`เพิ่ม ${newList.length} บัญชีสำหรับ ${accountName}`);
+  render();
+
+  const success = await saveAccounts();
+  if (success) {
+    toast(`เพิ่ม ${newList.length} บัญชีและบันทึกลง Supabase สำเร็จ`);
+  }
+  render();
 }
 
 function openEditModal(id) {
@@ -695,7 +844,7 @@ function openEditModal(id) {
   setTimeout(() => document.getElementById("editAccountName")?.focus(), 50);
 }
 
-function saveEdit(id) {
+async function saveEdit(id) {
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
 
@@ -716,9 +865,10 @@ function saveEdit(id) {
   a.resetHours = p.resetHours;
   a.resetTime = p.resetTime;
 
-  saveAccounts();
-  render();
   closeModal();
+  render();
+  await saveAccounts();
+  render();
   toast(`อัปเดต ${p.name} แล้ว`);
 }
 
@@ -970,10 +1120,23 @@ async function initApp() {
     };
   } else {
     // 2) Restore LINE session from sessionStorage
+    const storedUserJson = sessionStorage.getItem("line_user_obj");
+    const storedDbId = sessionStorage.getItem("line_db_id");
     const storedId = sessionStorage.getItem("line_user_id");
-    if (storedId) {
+    if (storedUserJson) {
+      try {
+        currentUser = JSON.parse(storedUserJson);
+      } catch (_) {
+        currentUser = null;
+      }
+    }
+    if (!currentUser && storedId) {
       const cachedName = sessionStorage.getItem("line_display_name") || "LINE User";
-      currentUser = { id: storedId, line_user_id: storedId, display_name: cachedName };
+      currentUser = {
+        id: storedDbId ? Number(storedDbId) : storedId,
+        line_user_id: storedId,
+        display_name: cachedName,
+      };
     }
   }
 
@@ -1000,8 +1163,11 @@ async function initApp() {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 
-  // 6) Render UI (if not already rendered by handleLiffLogin)
+  // 6) Render UI and sync DB
   if (!loggedInViaLiff) {
+    if (currentUser && !currentUser.is_guest) {
+      await ensureDbUser();
+    }
     updateAuthUI();
     await hydrateAccounts();
     render();
