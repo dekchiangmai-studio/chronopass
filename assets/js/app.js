@@ -36,6 +36,7 @@ function accountCacheKey() {
 }
 
 function getAccountCache() {
+  if (typeof hasFunctionalConsent === 'function' && !hasFunctionalConsent()) return null;
   const key = accountCacheKey();
   if (!key) return null;
   try {
@@ -45,6 +46,7 @@ function getAccountCache() {
 }
 
 function setAccountCache(value = accounts) {
+  if (typeof hasFunctionalConsent === 'function' && !hasFunctionalConsent()) return;
   const key = accountCacheKey();
   if (!key) return;
   localStorage.setItem(key, JSON.stringify({ expiresAt: Date.now() + ACCOUNT_CACHE_TTL_MS, accounts: value }));

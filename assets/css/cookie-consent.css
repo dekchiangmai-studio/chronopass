@@ -1,0 +1,365 @@
+/* ============================================
+   ChronoPass — Cookie Consent Banner & Modal
+   PDPA Compliance
+   ============================================ */
+
+/* ---- Banner (fixed bottom bar) ---- */
+.cookie-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  padding: 22px 28px;
+  background: rgba(16, 20, 28, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(47, 178, 238, 0.25);
+  box-shadow: 0 -8px 32px rgba(4, 7, 12, 0.6);
+  transform: translateY(100%);
+  opacity: 0;
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.cookie-banner.visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cookie-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.cookie-banner-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(47, 178, 238, 0.35);
+  background: rgba(47, 178, 238, 0.08);
+  color: var(--blue, #2fb2ee);
+  font-size: 20px;
+  border-radius: 2px;
+}
+
+.cookie-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cookie-banner-text h3 {
+  margin: 0 0 4px;
+  font: 600 15px "Chakra Petch", sans-serif;
+  color: var(--ink, #eef1f4);
+}
+
+.cookie-banner-text p {
+  margin: 0;
+  color: var(--muted, #7c8798);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cookie-banner-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cookie-btn {
+  padding: 10px 18px;
+  border: 1px solid var(--line, rgba(201, 211, 220, 0.14));
+  background: var(--raised-2, #151b25);
+  color: var(--ink, #eef1f4);
+  border-radius: 2px;
+  cursor: pointer;
+  font: 500 13px "Chakra Petch", sans-serif;
+  transition: 0.2s;
+  white-space: nowrap;
+}
+
+.cookie-btn:hover {
+  border-color: var(--blue, #2fb2ee);
+  color: var(--blue, #2fb2ee);
+  transform: translateY(-1px);
+}
+
+.cookie-btn-accept {
+  color: #04121c;
+  background: var(--blue, #2fb2ee);
+  border-color: var(--blue, #2fb2ee);
+  font-weight: 600;
+}
+
+.cookie-btn-accept:hover {
+  background: #61c6f4;
+  color: #04121c;
+}
+
+/* ---- Settings Modal ---- */
+.cookie-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.cookie-modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cookie-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.cookie-modal {
+  position: relative;
+  width: min(92vw, 540px);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 28px;
+  background: var(--raised, #10141c);
+  border: 1px solid var(--blue-deep, #0e5f95);
+  box-shadow: 14px 14px 0 rgba(14, 95, 149, 0.3);
+  border-radius: 2px;
+  transform: translateY(20px);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cookie-modal-overlay.visible .cookie-modal {
+  transform: translateY(0);
+}
+
+.cookie-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.cookie-modal-header h2 {
+  margin: 0;
+  font: 600 20px "Chakra Petch", sans-serif;
+  color: var(--ink, #eef1f4);
+}
+
+.cookie-modal-close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line, rgba(201, 211, 220, 0.14));
+  background: transparent;
+  color: var(--muted, #7c8798);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: 0.2s;
+  display: grid;
+  place-items: center;
+}
+
+.cookie-modal-close:hover {
+  border-color: var(--blue, #2fb2ee);
+  color: var(--blue, #2fb2ee);
+}
+
+.cookie-modal-intro {
+  margin: 0 0 22px;
+  color: var(--muted, #7c8798);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ---- Category items ---- */
+.cookie-category {
+  padding: 18px 16px;
+  border: 1px solid var(--line, rgba(201, 211, 220, 0.14));
+  background: rgba(255, 255, 255, 0.015);
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+
+.cookie-category:hover {
+  border-color: rgba(47, 178, 238, 0.35);
+}
+
+.cookie-category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.cookie-category-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cookie-category-info h4 {
+  margin: 0 0 3px;
+  font: 500 14px "Chakra Petch", sans-serif;
+  color: var(--ink, #eef1f4);
+}
+
+.cookie-category-info p {
+  margin: 0;
+  color: var(--muted, #7c8798);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cookie-category-badge {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border: 1px solid rgba(126, 217, 87, 0.4);
+  color: var(--green, #7ed957);
+  background: rgba(126, 217, 87, 0.07);
+  font: 400 10px "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ---- Toggle switch ---- */
+.cookie-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+}
+
+.cookie-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.cookie-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(201, 211, 220, 0.14);
+  border: 1px solid rgba(201, 211, 220, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: 0.25s;
+}
+
+.cookie-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--muted, #7c8798);
+  border-radius: 50%;
+  transition: 0.25s;
+}
+
+.cookie-toggle input:checked + .cookie-toggle-track {
+  background: rgba(47, 178, 238, 0.2);
+  border-color: var(--blue, #2fb2ee);
+}
+
+.cookie-toggle input:checked + .cookie-toggle-track::after {
+  transform: translateX(20px);
+  background: var(--blue, #2fb2ee);
+}
+
+/* ---- Data table within category ---- */
+.cookie-data-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cookie-data-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(201, 211, 220, 0.06);
+  font-size: 11px;
+  color: var(--muted, #7c8798);
+}
+
+.cookie-data-list li:last-child {
+  border-bottom: none;
+}
+
+.cookie-data-key {
+  font-family: "JetBrains Mono", monospace;
+  color: var(--blue, #2fb2ee);
+  word-break: break-all;
+}
+
+/* ---- Modal actions ---- */
+.cookie-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* ---- Footer cookie link ---- */
+.cookie-settings-link {
+  cursor: pointer;
+  color: var(--muted, #7c8798);
+  font: 400 10px "JetBrains Mono", monospace;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: 0.2s;
+}
+
+.cookie-settings-link:hover {
+  color: var(--blue, #2fb2ee);
+  border-bottom-color: var(--blue, #2fb2ee);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 700px) {
+  .cookie-banner {
+    padding: 18px 20px;
+  }
+
+  .cookie-banner-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .cookie-banner-icon {
+    display: none;
+  }
+
+  .cookie-banner-actions {
+    flex-direction: column;
+  }
+
+  .cookie-btn {
+    text-align: center;
+    padding: 12px 18px;
+  }
+
+  .cookie-modal {
+    padding: 22px 18px;
+  }
+}
