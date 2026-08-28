@@ -937,7 +937,7 @@ function renderLoginScreen() {
   `;
 
   // Hide dashboard sections
-  const ids = ["statsRow", "serviceOverview", "toolbarRow", "aiFilters"];
+  const ids = ["statsRow", "serviceOverview", "releaseNotes", "toolbarRow", "aiFilters"];
   ids.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
 }
 
@@ -984,7 +984,7 @@ function render() {
   }
 
   // Show dashboard sections
-  const show = { statsRow: "grid", serviceOverview: "grid", toolbarRow: "flex", aiFilters: "flex" };
+  const show = { statsRow: "grid", serviceOverview: "grid", releaseNotes: "block", toolbarRow: "flex", aiFilters: "flex" };
   Object.entries(show).forEach(([id, display]) => {
     const el = document.getElementById(id);
     if (el) el.style.display = display;
@@ -1035,7 +1035,7 @@ function render() {
     overview.innerHTML = services.map((svc) => {
       const arr = accounts.filter((a) => a.service === svc);
       const r = arr.filter((a) => accountState(a) === "ready").length;
-      return `<div class="stat"><div class="n">${arr.length}</div><div class="l">${escapeHtml(svc)} · พร้อมใช้ ${r}</div></div>`;
+      return `<div class="stat service-stat"><div class="n">พร้อมใช้ ${r}</div><div class="l">${escapeHtml(svc)} · บัญชีทั้งหมด ${arr.length} บัญชี</div></div>`;
     }).join("");
   }
 

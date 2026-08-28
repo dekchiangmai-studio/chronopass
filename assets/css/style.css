@@ -167,7 +167,94 @@ button:hover {
   font: 600 29px/1 "Chakra Petch";
   color: var(--blue);
 }
+.service-stat .n {
+  font-size: 24px;
+}
 .l {
+  color: var(--muted);
+  font-size: 13px;
+}
+.release-notes {
+  margin-bottom: 22px;
+  padding: 17px 18px;
+  background: rgba(16, 20, 28, 0.84);
+  border: 1px solid var(--line);
+  border-left-color: rgba(47, 178, 238, 0.6);
+}
+.release-notes-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.release-notes-kicker {
+  margin: 0 0 2px;
+  color: var(--blue);
+  font: 400 11px "JetBrains Mono";
+  letter-spacing: 0.04em;
+}
+.release-notes h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.release-version {
+  padding: 3px 8px;
+  border: 1px solid var(--blue-deep);
+  color: var(--blue);
+  font: 400 12px "JetBrains Mono";
+  white-space: nowrap;
+}
+.release-notes-list {
+  display: grid;
+  gap: 4px;
+  margin: 11px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+.release-notes-list li::before {
+  content: "•";
+  margin-right: 8px;
+  color: var(--blue);
+}
+.release-history {
+  margin-top: 13px;
+  border-top: 1px solid var(--line);
+}
+.release-history summary {
+  padding-top: 11px;
+  color: var(--blue);
+  cursor: pointer;
+  font: 500 13px "Chakra Petch";
+}
+.release-history summary:hover {
+  color: var(--ink);
+}
+.release-history-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.release-history-item {
+  padding: 10px 12px;
+  background: rgba(21, 27, 37, 0.7);
+  border: 1px solid var(--line);
+}
+.release-history-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--blue);
+  font: 400 12px "JetBrains Mono";
+}
+.release-history-meta time {
+  color: var(--muted);
+  font-size: 11px;
+}
+.release-history-item p {
+  margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
 }
@@ -480,6 +567,9 @@ button:hover {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .release-notes-heading {
+    align-items: flex-start;
   }
   .toolbar input,
   .toolbar select {
