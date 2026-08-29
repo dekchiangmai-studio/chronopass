@@ -170,10 +170,6 @@ button:hover {
 .service-stat .n {
   font-size: 24px;
 }
-.service-stat-unit {
-  font-size: 16px;
-  font-weight: 500;
-}
 .l {
   color: var(--muted);
   font-size: 13px;

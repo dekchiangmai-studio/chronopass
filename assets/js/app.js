@@ -1033,7 +1033,7 @@ function render() {
     overview.innerHTML = services.map((svc) => {
       const arr = accounts.filter((a) => a.service === svc);
       const r = arr.filter((a) => accountState(a) === "ready").length;
-      return `<div class="stat service-stat"><div class="n">${r} / ${arr.length} <span class="service-stat-unit">บัญชี</span></div><div class="l">${escapeHtml(svc)} พร้อมใช้งาน</div></div>`;
+      return `<div class="stat service-stat"><div class="n">${r} / ${arr.length}</div><div class="l">${escapeHtml(svc)} พร้อมใช้งาน</div></div>`;
     }).join("");
   }
 
