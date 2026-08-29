@@ -144,7 +144,7 @@ button:hover {
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 12px;
   margin-bottom: 22px;
 }
@@ -169,6 +169,10 @@ button:hover {
 }
 .service-stat .n {
   font-size: 24px;
+}
+.service-stat-unit {
+  font-size: 16px;
+  font-weight: 500;
 }
 .l {
   color: var(--muted);

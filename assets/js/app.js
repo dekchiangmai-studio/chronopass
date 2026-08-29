@@ -978,7 +978,6 @@ function render() {
     renderLoginScreen();
     document.getElementById("total").textContent = "0";
     document.getElementById("ready").textContent = "0";
-    document.getElementById("used").textContent = "0";
     document.getElementById("waiting").textContent = "0";
     return;
   }
@@ -1026,7 +1025,6 @@ function render() {
 
   document.getElementById("total").textContent = accounts.length;
   document.getElementById("ready").textContent = readyCount;
-  document.getElementById("used").textContent = accounts.filter((a) => a.lastUsed && accountState(a) === "waiting").length;
   document.getElementById("waiting").textContent = waitCount;
 
   // Service overview
@@ -1035,7 +1033,7 @@ function render() {
     overview.innerHTML = services.map((svc) => {
       const arr = accounts.filter((a) => a.service === svc);
       const r = arr.filter((a) => accountState(a) === "ready").length;
-      return `<div class="stat service-stat"><div class="n">พร้อมใช้ ${r}</div><div class="l">${escapeHtml(svc)} · บัญชีทั้งหมด ${arr.length} บัญชี</div></div>`;
+      return `<div class="stat service-stat"><div class="n">${r} / ${arr.length} <span class="service-stat-unit">บัญชี</span></div><div class="l">${escapeHtml(svc)} พร้อมใช้งาน</div></div>`;
     }).join("");
   }
 

@@ -7,7 +7,7 @@
       name="description"
       content="ChronoPass — ระบบติดตามสถานะและเวลารีเซ็ตบัญชี AI"
     />
-    <title>ChronoPass v1.0.5</title>
+    <title>ChronoPass v1.0.6</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -100,46 +100,25 @@
         </div>
       </header>
 
-      <div class="stats" id="statsRow" style="display: none">
-        <div class="stat">
-          <div class="n" id="total">0</div>
-          <div class="l">บัญชีทั้งหมด</div>
-        </div>
-        <div class="stat">
-          <div class="n" id="ready">0</div>
-          <div class="l">พร้อมใช้</div>
-        </div>
-        <div class="stat">
-          <div class="n" id="used">0</div>
-          <div class="l">ใช้แล้ว</div>
-        </div>
-        <div class="stat">
-          <div class="n" id="waiting">0</div>
-          <div class="l">กำลังรอรีเซ็ต</div>
-        </div>
-      </div>
-
-      <div
-        id="serviceOverview"
-        class="grid"
-        style="margin-bottom: 22px; display: none"
-      ></div>
-
       <aside class="release-notes" id="releaseNotes" style="display: none" aria-labelledby="releaseNotesTitle">
         <div class="release-notes-heading">
           <div>
             <p class="release-notes-kicker">อัปเดตล่าสุด</p>
             <h2 id="releaseNotesTitle">มีอะไรใหม่ใน ChronoPass</h2>
           </div>
-          <span class="release-version">v1.0.5</span>
+          <span class="release-version">v1.0.6</span>
         </div>
         <ul class="release-notes-list">
-          <li>ปรับการ์ดบริการให้เน้นจำนวนบัญชีที่พร้อมใช้ด้วยสีน้ำเงิน</li>
-          <li>แสดงจำนวนบัญชีทั้งหมดของแต่ละบริการไว้ในบรรทัดล่าง</li>
+          <li>แสดงสถานะพร้อมใช้ของแต่ละบริการเป็นสัดส่วน พร้อมใช้ / บัญชีทั้งหมด</li>
+          <li>ปรับการ์ดสรุปให้เหลือบัญชีทั้งหมด, พร้อมใช้งาน และรอรีเซ็ต</li>
         </ul>
         <details class="release-history">
           <summary>ดูประวัติอัปเดต</summary>
           <div class="release-history-list">
+            <article class="release-history-item">
+              <div class="release-history-meta"><strong>v1.0.5</strong><time datetime="2026-08-29">29 ส.ค. 2569</time></div>
+              <p>เพิ่มข่าวอัปเดตบน Dashboard และปรับการ์ดบริการให้เน้นจำนวนบัญชีพร้อมใช้</p>
+            </article>
             <article class="release-history-item">
               <div class="release-history-meta"><strong>v1.0.4</strong><time datetime="2026-08-26">26 ส.ค. 2569</time></div>
               <p>เพิ่มแบนเนอร์และหน้าตั้งค่าคุกกี้ตาม PDPA พร้อมให้ผู้ใช้ปรับการตั้งค่าได้ตลอดเวลา</p>
@@ -163,6 +142,27 @@
           </div>
         </details>
       </aside>
+
+      <div class="stats" id="statsRow" style="display: none">
+        <div class="stat">
+          <div class="n" id="total">0</div>
+          <div class="l">บัญชีทั้งหมด</div>
+        </div>
+        <div class="stat">
+          <div class="n" id="ready">0</div>
+          <div class="l">พร้อมใช้งาน</div>
+        </div>
+        <div class="stat">
+          <div class="n" id="waiting">0</div>
+          <div class="l">รอรีเซ็ต</div>
+        </div>
+      </div>
+
+      <div
+        id="serviceOverview"
+        class="grid"
+        style="margin-bottom: 22px; display: none"
+      ></div>
 
       <div class="toolbar" id="toolbarRow" style="display: none">
         <input
