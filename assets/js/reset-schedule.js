@@ -30,8 +30,12 @@
   function nextReset(schedule, lastUsed, now = Date.now()) {
     const ref = new Date(lastUsed);
     const mode = schedule?.resetMode || "hours";
+    if (mode === "seconds" || schedule?.service === "ทดสอบระบบ" || schedule?.name === "ทดสอบระบบ") {
+      const sec = Number(schedule?.resetSeconds) || 5;
+      return new Date(ref.getTime() + sec * 1000);
+    }
     if (mode === "hours" || mode === "days") {
-      const interval = Math.max(0.001, Number(schedule?.resetHours) || 1) * 60 * 60 * 1000;
+      const interval = Math.max(1, Math.round(Number(schedule?.resetHours) || 1)) * 60 * 60 * 1000;
       return new Date(ref.getTime() + interval);
     }
     if (mode === "monthlyFromUse") return addBangkokMonths(ref, 1, schedule?.resetTime);

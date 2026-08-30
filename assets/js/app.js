@@ -588,7 +588,7 @@ async function saveAccounts() {
     label: String(a.label || getAccountName(a)).trim(),
     service: String(a.service || "Copilot"),
     reset_mode: String(a.resetMode || "hours"),
-    reset_hours: Number(a.resetHours || 6),
+    reset_hours: Math.max(1, Math.round(Number(a.resetHours || 6))),
     reset_time: String(a.resetTime || "06:00"),
     reset_day: Number(a.resetDay || 1),
     reset_timezone: String(a.resetTimezone || "Asia/Bangkok"),
@@ -648,11 +648,12 @@ const PRESETS = {
   claude:       { name: "Claude",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Claude · 24 ชม." },
   chatgpt:      { name: "ChatGPT",              resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "ChatGPT · 24 ชม." },
   perplexity:   { name: "Perplexity",           resetMode: "hours",   resetHours: 12,   resetTime: "00:00", label: "Perplexity · 12 ชม." },
-  test:         { name: "ทดสอบระบบ",            resetMode: "hours",   resetHours: 5/3600, resetTime: "00:00", label: "ทดสอบระบบ · 5 วินาที" },
+  test:         { name: "ทดสอบระบบ",            resetMode: "seconds", resetHours: 1, resetSeconds: 5, resetTime: "00:00", label: "ทดสอบระบบ · 5 วินาที" },
 };
 
 function getPreset(serviceName) {
   const s = String(serviceName || "").toLowerCase();
+  if (s.includes("ทดสอบ") || s.includes("test")) return PRESETS.test;
   for (const [key, preset] of Object.entries(PRESETS)) {
     if (s.includes(key)) return preset;
   }
@@ -699,10 +700,8 @@ function fmtDuration(ms) {
 
 function scheduleLabel(a) {
   const p = a.isCustomSchedule ? a : getPreset(a.service);
-  if (p.resetMode === "hours") {
-    if (p.resetHours < 1) return `${Math.round(p.resetHours * 3600)} วินาที`;
-    return `${p.resetHours} ชม.`;
-  }
+  if (p.name === "ทดสอบระบบ" || p.resetMode === "seconds" || (p.resetHours && p.resetHours < 1)) return "5 วินาที";
+  if (p.resetMode === "hours") return `${p.resetHours} ชม.`;
   if (p.resetMode === "days") return `${Math.round(p.resetHours / 24)} วัน`;
   if (p.resetMode === "monthlyFromUse") return "ทุกเดือนตามวันหมด";
   if (p.resetMode === "monthly") return "ทุกวันที่ 1";
