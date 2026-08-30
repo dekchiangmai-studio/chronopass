@@ -21,6 +21,8 @@ let accounts = [];
 let currentUser = null;
 let liffReady = false;
 let currentServiceFilter = "all";
+let lastSyncedAt = null;
+let syncInProgress = false;
 
 // ============================================
 // Helpers
@@ -65,6 +67,17 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
   })[character]);
+}
+
+function updateSyncStatus(message = "") {
+  const el = document.getElementById("syncStatus");
+  const button = document.getElementById("syncBtn");
+  if (!el || !button) return;
+  button.disabled = syncInProgress;
+  button.textContent = syncInProgress ? "กำลังซิงค์..." : "ซิงค์ข้อมูล";
+  if (!currentUser) { el.style.display = "none"; return; }
+  el.style.display = "inline";
+  el.textContent = message || (lastSyncedAt ? `ซิงค์ล่าสุด ${new Date(lastSyncedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}` : "ยังไม่เคยซิงค์");
 }
 
 // Email matching is case-insensitive, consistent with the database constraint.
@@ -177,6 +190,7 @@ function updateAuthUI() {
   const userLabel = document.getElementById("userLabel");
   const addBtn = document.getElementById("addBtn");
   const deleteBtn = document.getElementById("deleteBtn");
+  const syncBtn = document.getElementById("syncBtn");
   const upgradeBtn = document.getElementById("upgradeBtn");
   const membershipLabel = document.getElementById("membershipLabel");
   const cancelSubscriptionBtn = document.getElementById("cancelSubscriptionBtn");
@@ -194,6 +208,8 @@ function updateAuthUI() {
 
     if (addBtn) addBtn.style.display = "inline-flex";
     if (deleteBtn) deleteBtn.style.display = "inline-flex";
+    if (syncBtn) syncBtn.style.display = "inline-flex";
+    updateSyncStatus();
     if (upgradeBtn) {
       upgradeBtn.style.display = hasPaidNotificationAccess() ? "none" : "inline-flex";
       upgradeBtn.textContent = currentUser.is_guest ? "เชื่อมต่อ LINE" : "แจ้งเตือน LINE ฿49/เดือน";
@@ -220,6 +236,7 @@ function updateAuthUI() {
     }
     if (addBtn) addBtn.style.display = "none";
     if (deleteBtn) deleteBtn.style.display = "none";
+    if (syncBtn) syncBtn.style.display = "none";
     if (upgradeBtn) upgradeBtn.style.display = "none";
     if (cancelSubscriptionBtn) cancelSubscriptionBtn.style.display = "none";
     if (membershipLabel) membershipLabel.style.display = "none";
@@ -453,7 +470,8 @@ async function hydrateAccounts() {
   }
   if (currentUser.is_guest) {
     accounts = getLocal();
-    return;
+    lastSyncedAt = Date.now();
+    return true;
   }
 
   await ensureDbUser();
@@ -477,11 +495,15 @@ async function hydrateAccounts() {
           resetMode: r.reset_mode || "hours",
           resetHours: Number(r.reset_hours || 6),
           resetTime: r.reset_time || "06:00",
+          resetDay: Number(r.reset_day || 1),
+          resetTimezone: r.reset_timezone || "Asia/Bangkok",
+          isCustomSchedule: Boolean(r.reset_is_custom),
           lastUsed: r.last_used ? Number(r.last_used) : null,
           user_id: r.user_id,
         }));
         setAccountCache();
-        return;
+        lastSyncedAt = Date.now();
+        return true;
       }
     } catch (err) {
       console.warn("Hydrate accounts direct Supabase error:", err);
@@ -500,11 +522,15 @@ async function hydrateAccounts() {
         resetMode: r.reset_mode || "hours",
         resetHours: Number(r.reset_hours || 6),
         resetTime: r.reset_time || "06:00",
+        resetDay: Number(r.reset_day || 1),
+        resetTimezone: r.reset_timezone || "Asia/Bangkok",
+        isCustomSchedule: Boolean(r.reset_is_custom),
         lastUsed: r.last_used ? Number(r.last_used) : null,
         user_id: r.user_id,
       }));
       setAccountCache();
-      return;
+      lastSyncedAt = Date.now();
+      return true;
     }
   } catch (err) {
     console.warn("Hydrate accounts Edge function error:", err);
@@ -514,6 +540,29 @@ async function hydrateAccounts() {
   const cached = getAccountCache();
   if (cached) {
     accounts = cached;
+  }
+  return false;
+}
+
+async function syncAccounts() {
+  if (!currentUser || syncInProgress) return;
+  syncInProgress = true;
+  let statusMessage = "";
+  updateSyncStatus();
+  try {
+    const synced = await hydrateAccounts();
+    render();
+    statusMessage = synced ? "" : "ซิงค์ไม่สำเร็จ — ลองใหม่อีกครั้ง";
+    updateSyncStatus(statusMessage);
+    toast(synced ? "ซิงค์ข้อมูลล่าสุดแล้ว" : "ซิงค์ไม่สำเร็จ กำลังแสดงข้อมูลที่บันทึกไว้");
+  } catch (error) {
+    console.warn("Manual sync error:", error);
+    statusMessage = "ซิงค์ไม่สำเร็จ — ลองใหม่อีกครั้ง";
+    updateSyncStatus(statusMessage);
+    toast("ซิงค์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+  } finally {
+    syncInProgress = false;
+    updateSyncStatus(statusMessage);
   }
 }
 
@@ -541,6 +590,9 @@ async function saveAccounts() {
     reset_mode: String(a.resetMode || "hours"),
     reset_hours: Number(a.resetHours || 6),
     reset_time: String(a.resetTime || "06:00"),
+    reset_day: Number(a.resetDay || 1),
+    reset_timezone: String(a.resetTimezone || "Asia/Bangkok"),
+    reset_is_custom: Boolean(a.isCustomSchedule),
     last_used: a.lastUsed ? Number(a.lastUsed) : null,
   }));
 
@@ -568,7 +620,8 @@ async function saveAccounts() {
     try {
       await callAppData('upsertAccounts', { accounts: rows.map((row) => ({
         id: row.id, accountName: row.account_name, label: row.label, service: row.service,
-        resetMode: row.reset_mode, resetHours: row.reset_hours, resetTime: row.reset_time, lastUsed: row.last_used,
+        resetMode: row.reset_mode, resetHours: row.reset_hours, resetTime: row.reset_time, resetDay: row.reset_day,
+        resetTimezone: row.reset_timezone, isCustomSchedule: row.reset_is_custom, lastUsed: row.last_used,
       })) });
       saved = true;
     } catch (err) {
@@ -595,6 +648,7 @@ const PRESETS = {
   claude:       { name: "Claude",               resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "Claude · 24 ชม." },
   chatgpt:      { name: "ChatGPT",              resetMode: "hours",   resetHours: 24,   resetTime: "00:00", label: "ChatGPT · 24 ชม." },
   perplexity:   { name: "Perplexity",           resetMode: "hours",   resetHours: 12,   resetTime: "00:00", label: "Perplexity · 12 ชม." },
+  test:         { name: "ทดสอบระบบ",            resetMode: "hours",   resetHours: 5/3600, resetTime: "00:00", label: "ทดสอบระบบ · 5 วินาที" },
 };
 
 function getPreset(serviceName) {
@@ -619,30 +673,11 @@ function addCalendarMonths(date, months) {
 }
 
 function getNextReset(account, refTime) {
-  const ref = new Date(refTime);
   const preset = getPreset(account.service);
-  const mode = preset.resetMode;
-
-  if (mode === "hours" || mode === "days") {
-    const interval = (Number(preset.resetHours) || 1) * 3600000;
-    const cycles = Math.floor((Date.now() - ref.getTime()) / interval) + 1;
-    return new Date(ref.getTime() + cycles * interval);
-  }
-
-  if (mode === "monthlyFromUse") {
-    return addCalendarMonths(ref, 1);
-  }
-
-  if (mode === "monthly") {
-    const day = Math.min(31, Math.max(1, Number(preset.resetDay) || 1));
-    let c = new Date(ref.getFullYear(), ref.getMonth(), day);
-    while (c.getTime() <= ref.getTime()) {
-      c = new Date(c.getFullYear(), c.getMonth() + 1, day);
-    }
-    return c;
-  }
-
-  return new Date(ref.getTime() + 3600000);
+  const schedule = account.isCustomSchedule
+    ? account
+    : { ...preset, resetDay: preset.resetDay || 1, resetTimezone: "Asia/Bangkok" };
+  return window.ChronoPassReset.nextReset(schedule, refTime, Date.now());
 }
 
 function accountState(a) {
@@ -663,8 +698,11 @@ function fmtDuration(ms) {
 }
 
 function scheduleLabel(a) {
-  const p = getPreset(a.service);
-  if (p.resetMode === "hours") return `${p.resetHours} ชม.`;
+  const p = a.isCustomSchedule ? a : getPreset(a.service);
+  if (p.resetMode === "hours") {
+    if (p.resetHours < 1) return `${Math.round(p.resetHours * 3600)} วินาที`;
+    return `${p.resetHours} ชม.`;
+  }
   if (p.resetMode === "days") return `${Math.round(p.resetHours / 24)} วัน`;
   if (p.resetMode === "monthlyFromUse") return "ทุกเดือนตามวันหมด";
   if (p.resetMode === "monthly") return "ทุกวันที่ 1";
@@ -681,16 +719,25 @@ async function useAccount(id) {
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
   if (accountState(a) !== "ready") { toast("บัญชีนี้ยังไม่รีเซ็ต"); return; }
+  const previousLastUsed = a.lastUsed;
   a.lastUsed = Date.now();
   render();
-  toast(`${a.service} — ${getAccountName(a)} บันทึกแล้ว`);
-  await saveAccounts();
+  toast("กำลังบันทึกสถานะบัญชี...");
+  if (await saveAccounts()) {
+    toast(`${a.service} — ${getAccountName(a)} บันทึกแล้ว`);
+  } else {
+    a.lastUsed = previousLastUsed;
+    render();
+    toast("บันทึกสถานะไม่สำเร็จ ข้อมูลเดิมถูกคืนกลับแล้ว");
+  }
 }
 
 async function deleteAccount(id) {
   const t = accounts.find((x) => x.id === id);
   if (!t) return;
-  accounts = accounts.filter((x) => x.id !== id);
+  if (!window.confirm(`ยืนยันการลบบัญชี ${getAccountName(t)} (${t.service})? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+
+  let deleted = false;
 
   if (currentUser && !currentUser.is_guest) {
     await ensureDbUser();
@@ -698,23 +745,35 @@ async function deleteAccount(id) {
 
     if (sb && Number.isSafeInteger(userId) && userId > 0) {
       try {
-        await sb.from('accounts').delete().eq('id', id).eq('user_id', userId);
+        const { error } = await sb.from('accounts').delete().eq('id', id).eq('user_id', userId);
+        deleted = !error;
+        if (error) console.warn("Direct Supabase delete error:", error);
       } catch (err) {
         console.warn("Direct Supabase delete error:", err);
       }
     }
 
-    try {
-      await callAppData('deleteAccount', { accountId: id });
-    } catch (error) {
-      console.warn("Edge function delete error:", error);
+    if (!deleted) {
+      try {
+        await callAppData('deleteAccount', { accountId: id });
+        deleted = true;
+      } catch (error) {
+        console.warn("Edge function delete error:", error);
+      }
     }
-
-    setAccountCache();
   } else {
-    localStorage.setItem(GUEST_KEY, JSON.stringify(accounts));
+    try {
+      const next = accounts.filter((x) => x.id !== id);
+      localStorage.setItem(GUEST_KEY, JSON.stringify(next));
+      deleted = true;
+    } catch (error) {
+      console.warn("Guest account delete error:", error);
+    }
   }
 
+  if (!deleted) { toast("ลบบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"); return; }
+  accounts = accounts.filter((x) => x.id !== id);
+  setAccountCache();
   render();
   closeModal();
   toast(`ลบ ${t.label} แล้ว`);
@@ -728,6 +787,14 @@ function closeModal() {
   const m = document.getElementById("actionModal");
   m.classList.add("hidden");
   m.setAttribute("aria-hidden", "true");
+}
+
+function setModalSaving(saving) {
+  document.querySelectorAll("#actionModal .primary").forEach((button) => {
+    button.disabled = saving;
+    if (saving) button.dataset.label = button.textContent;
+    button.textContent = saving ? "กำลังบันทึก..." : (button.dataset.label || button.textContent);
+  });
 }
 
 function openAddModal() {
@@ -800,13 +867,18 @@ async function addAccount() {
     };
   });
 
+  const previousAccounts = accounts;
   accounts = [...newList, ...accounts];
   closeModal();
   render();
 
+  toast("กำลังบันทึกบัญชี...");
   const success = await saveAccounts();
   if (success) {
     toast(`เพิ่ม ${newList.length} บัญชีและบันทึกลง Supabase สำเร็จ`);
+  } else {
+    accounts = previousAccounts;
+    toast("เพิ่มบัญชีไม่สำเร็จ ข้อมูลถูกคืนกลับแล้ว กรุณาลองใหม่อีกครั้ง");
   }
   render();
 }
@@ -834,6 +906,31 @@ function openEditModal(id) {
           ).join("")}
         </select>
       </div>
+      <div class="form-row">
+        <label class="checkbox-label"><input id="customSchedule" type="checkbox" ${a.isCustomSchedule ? "checked" : ""} onchange="toggleCustomScheduleFields()"> กำหนดรอบรีเซ็ตเอง</label>
+      </div>
+      <div id="customScheduleFields" class="form-grid custom-schedule-fields">
+        <div class="form-row">
+          <label for="editResetMode">รูปแบบรอบรีเซ็ต</label>
+          <select id="editResetMode" onchange="toggleCustomScheduleFields()">
+            <option value="hours" ${(a.resetMode || "") === "hours" ? "selected" : ""}>ทุกจำนวนชั่วโมง</option>
+            <option value="days" ${(a.resetMode || "") === "days" ? "selected" : ""}>ทุกจำนวนวัน</option>
+            <option value="monthly" ${(a.resetMode || "") === "monthly" ? "selected" : ""}>ทุกเดือนตามวันที่</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="editResetInterval">จำนวนชั่วโมง / วัน</label>
+          <input id="editResetInterval" type="number" min="1" max="8760" value="${Number(a.resetMode === "days" ? Number(a.resetHours || 24) / 24 : a.resetHours || 24)}">
+        </div>
+        <div class="form-row" id="customResetDayRow">
+          <label for="editResetDay">วันที่ของเดือน</label>
+          <input id="editResetDay" type="number" min="1" max="31" value="${Number(a.resetDay || 1)}">
+        </div>
+        <div class="form-row">
+          <label for="editResetTime">เวลารีเซ็ต (เวลาไทย)</label>
+          <input id="editResetTime" type="time" value="${escapeHtml(a.resetTime || "00:00")}">
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button type="button" class="ghost" onclick="closeModal()">ยกเลิก</button>
@@ -843,7 +940,17 @@ function openEditModal(id) {
 
   m.classList.remove("hidden");
   m.setAttribute("aria-hidden", "false");
+  toggleCustomScheduleFields();
   setTimeout(() => document.getElementById("editAccountName")?.focus(), 50);
+}
+
+function toggleCustomScheduleFields() {
+  const enabled = document.getElementById("customSchedule")?.checked;
+  const fields = document.getElementById("customScheduleFields");
+  const dayRow = document.getElementById("customResetDayRow");
+  const mode = document.getElementById("editResetMode")?.value;
+  if (fields) fields.style.display = enabled ? "grid" : "none";
+  if (dayRow) dayRow.style.display = enabled && mode === "monthly" ? "block" : "none";
 }
 
 async function saveEdit(id) {
@@ -860,16 +967,40 @@ async function saveEdit(id) {
     return;
   }
 
+  const previous = { ...a };
   a.accountName = accountName;
   a.label = accountName;
   a.service = p.name;
   a.resetMode = p.resetMode;
   a.resetHours = p.resetHours;
   a.resetTime = p.resetTime;
+  a.resetDay = p.resetDay || 1;
+  a.resetTimezone = "Asia/Bangkok";
+  a.isCustomSchedule = Boolean(document.getElementById("customSchedule")?.checked);
+  if (a.isCustomSchedule) {
+    const resetMode = document.getElementById("editResetMode").value;
+    const resetHours = Number(document.getElementById("editResetInterval").value);
+    const resetDay = Number(document.getElementById("editResetDay").value);
+    const resetTime = document.getElementById("editResetTime").value;
+    if (!Number.isInteger(resetHours) || resetHours < 1 || resetHours > 8760) { Object.assign(a, previous); toast("กรุณาระบุจำนวนชั่วโมงหรือวันให้ถูกต้อง"); return; }
+    if (resetMode === "monthly" && (!Number.isInteger(resetDay) || resetDay < 1 || resetDay > 31)) { Object.assign(a, previous); toast("กรุณาระบุวันที่ของเดือน 1–31"); return; }
+    if (!/^\d{2}:\d{2}$/.test(resetTime)) { Object.assign(a, previous); toast("กรุณาระบุเวลารีเซ็ต"); return; }
+    a.resetMode = resetMode;
+    a.resetHours = resetMode === "days" ? resetHours * 24 : resetHours;
+    a.resetDay = resetDay;
+    a.resetTime = resetTime;
+  }
 
+  setModalSaving(true);
+  const saved = await saveAccounts();
+  setModalSaving(false);
+  if (!saved) {
+    Object.assign(a, previous);
+    render();
+    toast("บันทึกการแก้ไขไม่สำเร็จ ข้อมูลเดิมถูกคืนกลับแล้ว");
+    return;
+  }
   closeModal();
-  render();
-  await saveAccounts();
   render();
   toast(`อัปเดต ${p.name} แล้ว`);
 }
@@ -1106,6 +1237,7 @@ async function initApp() {
   document.getElementById("logoutBtn")?.addEventListener("click", signOut);
   document.getElementById("addBtn")?.addEventListener("click", openAddModal);
   document.getElementById("deleteBtn")?.addEventListener("click", openDeleteModal);
+  document.getElementById("syncBtn")?.addEventListener("click", syncAccounts);
   document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
   document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", cancelStripeSubscription);
 

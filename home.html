@@ -3,11 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0a0d13" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ChronoPass" />
     <meta
       name="description"
       content="ChronoPass — ระบบติดตามสถานะและเวลารีเซ็ตบัญชี AI"
     />
-    <title>ChronoPass v1.0.6</title>
+    <title>ChronoPass v1.1.0</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32.png?v=1.1.0" />
+    <link rel="icon" type="image/png" href="assets/images/icon-192.png?v=1.1.0" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/images/apple-touch-icon.png?v=1.1.0" />
+    <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=1.1.0" />
+    <link rel="manifest" href="site.webmanifest?v=1.1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -81,14 +90,16 @@
               ออกจากระบบ
             </button>
           </div>
-          <button
-            id="addBtn"
-            class="primary"
+            <button
+              id="addBtn"
+              class="primary"
             type="button"
             style="display: none"
           >
-            + เพิ่มบัญชีใหม่
-          </button>
+              + เพิ่มบัญชีใหม่
+            </button>
+          <button id="syncBtn" class="ghost" type="button" style="display: none">ซิงค์ข้อมูล</button>
+          <span id="syncStatus" class="sync-status" style="display: none"></span>
           <button
             id="deleteBtn"
             class="danger"
@@ -106,15 +117,22 @@
             <p class="release-notes-kicker">อัปเดตล่าสุด</p>
             <h2 id="releaseNotesTitle">มีอะไรใหม่ใน ChronoPass</h2>
           </div>
-          <span class="release-version">v1.0.6</span>
+          <span class="release-version">v1.1.0</span>
         </div>
         <ul class="release-notes-list">
-          <li>แสดงสถานะพร้อมใช้ของแต่ละบริการเป็นสัดส่วน พร้อมใช้ / บัญชีทั้งหมด</li>
-          <li>ปรับการ์ดสรุปให้เหลือบัญชีทั้งหมด, พร้อมใช้งาน และรอรีเซ็ต</li>
+          <li>เพิ่มปุ่มซิงค์ข้อมูล พร้อมแสดงเวลาที่ซิงค์ล่าสุดและข้อความให้ลองใหม่เมื่อเชื่อมต่อไม่สำเร็จ</li>
+          <li>กำหนดรอบรีเซ็ตเองได้เป็นชั่วโมง วัน หรือวันที่ของเดือน โดยใช้เวลาไทย</li>
+          <li>แก้บั๊กนับถอยหลังรีเซ็ตข้ามรอบเมื่อ countdown ถึง 0 โดยผู้ใช้ยังไม่ทันกด</li>
+          <li>เพิ่มบริการ AI "ทดสอบระบบ · 5 วินาที" สำหรับทดสอบระบบรีเซ็ต</li>
+          <li>รองรับไอคอนแอปเมื่อเพิ่มไปยังหน้าจอโฮมบน iPhone / iPad (Add to Home Screen)</li>
         </ul>
         <details class="release-history">
           <summary>ดูประวัติอัปเดต</summary>
           <div class="release-history-list">
+            <article class="release-history-item">
+              <div class="release-history-meta"><strong>v1.0.6</strong><time datetime="2026-08-29">29 ส.ค. 2569</time></div>
+              <p>ปรับการ์ดสรุปบัญชีและย้ายข่าวอัปเดตไปไว้เหนือส่วนสรุป</p>
+            </article>
             <article class="release-history-item">
               <div class="release-history-meta"><strong>v1.0.5</strong><time datetime="2026-08-29">29 ส.ค. 2569</time></div>
               <p>เพิ่มข่าวอัปเดตบน Dashboard และปรับการ์ดบริการให้เน้นจำนวนบัญชีพร้อมใช้</p>
@@ -208,11 +226,13 @@
 
     <!-- Config -->
     <script>
+      const isProductionHost = window.location.hostname === "dekchiangmai-studio.github.io";
       window.APP_CONFIG = {
         SUPABASE_URL: "https://irwqejdtwfgdouzyswbz.supabase.co",
         SUPABASE_ANON_KEY:
           "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlyd3FlamR0d2ZnZG91enlzd2J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwMjMxNjYsImV4cCI6MjEwMjU5OTE2Nn0.LVufLhShkVqqBvrApfYr9L7_Ygx_ItjGyYBLps5I-K8",
-        LIFF_ID: "2011183218-fD6YQxiA",
+        // GitHub Pages uses the production LIFF app; localhost and ngrok use Dev.
+        LIFF_ID: isProductionHost ? "2011183218-fD6YQxiA" : "2011183218-1cDYrSiu",
       };
     </script>
 
@@ -220,6 +240,7 @@
     <script src="assets/js/cookie-consent.js"></script>
 
     <!-- App -->
+    <script src="assets/js/reset-schedule.js"></script>
     <script src="assets/js/app.js"></script>
   </body>
 </html>
