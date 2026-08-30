@@ -365,8 +365,9 @@ function signInWithLine() {
     return;
   }
 
-  // Clear guest mode if switching to LINE login
+  // Clear guest mode and logout flag if switching to LINE login
   localStorage.removeItem("guest_mode");
+  sessionStorage.removeItem("logged_out");
 
   // LIFF is ready
   if (liffReady) {
@@ -402,6 +403,7 @@ async function handleLiffLogin() {
     sessionStorage.setItem("line_display_name", user.display_name || "");
     sessionStorage.setItem("line_db_id", String(user.id));
     sessionStorage.setItem("line_user_obj", JSON.stringify(user));
+    sessionStorage.removeItem("logged_out");
     localStorage.removeItem("guest_mode");
 
     // Clear URL query parameters from LINE redirect
@@ -431,8 +433,11 @@ function loginAsGuest() {
   };
 
   localStorage.setItem("guest_mode", "true");
+  sessionStorage.removeItem("logged_out");
   sessionStorage.removeItem("line_user_id");
   sessionStorage.removeItem("line_display_name");
+  sessionStorage.removeItem("line_db_id");
+  sessionStorage.removeItem("line_user_obj");
 
   hydrateAccounts();
   render();
@@ -445,7 +450,10 @@ async function signOut() {
   accounts = [];
   sessionStorage.removeItem("line_user_id");
   sessionStorage.removeItem("line_display_name");
+  sessionStorage.removeItem("line_db_id");
+  sessionStorage.removeItem("line_user_obj");
   localStorage.removeItem("guest_mode");
+  sessionStorage.setItem("logged_out", "true");
 
   if (window.liff && liffReady) {
     try {
@@ -1240,8 +1248,9 @@ async function initApp() {
   document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
   document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", cancelStripeSubscription);
 
-  // 1) Check Guest mode first
-  const isGuest = localStorage.getItem("guest_mode") === "true";
+  // 1) Check logout state and Guest mode
+  const isLoggedOut = sessionStorage.getItem("logged_out") === "true";
+  const isGuest = !isLoggedOut && localStorage.getItem("guest_mode") === "true";
   if (isGuest) {
     currentUser = {
       id: "guest",
@@ -1249,7 +1258,7 @@ async function initApp() {
       display_name: "Guest (ในเครื่อง)",
       is_guest: true,
     };
-  } else {
+  } else if (!isLoggedOut) {
     // 2) Restore LINE session from sessionStorage
     const storedUserJson = sessionStorage.getItem("line_user_obj");
     const storedDbId = sessionStorage.getItem("line_db_id");
@@ -1275,8 +1284,8 @@ async function initApp() {
   await initLiff();
 
   let loggedInViaLiff = false;
-  // 4) Auto-login from LIFF if not in guest mode and not restored from session
-  if (!isGuest && liffReady && window.liff.isLoggedIn()) {
+  // 4) Auto-login from LIFF if not logged out, not in guest mode, and not already restored
+  if (!isLoggedOut && !isGuest && !currentUser && liffReady && window.liff.isLoggedIn()) {
     await handleLiffLogin();
     loggedInViaLiff = true;
   }
