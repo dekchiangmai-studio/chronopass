@@ -395,7 +395,56 @@ function getLineOAuthUrl() {
   return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
 }
 
-// Sign in with LINE (LIFF with PWA cross-context persistence)
+// PWA Cloud Session Sync (Solves iOS standalone isolated storage sandbox)
+let pwaPollTimer = null;
+
+function startPwaAuthPolling(syncId) {
+  if (!syncId || !sb) return;
+  clearInterval(pwaPollTimer);
+
+  let attempts = 0;
+  pwaPollTimer = setInterval(async () => {
+    attempts++;
+    if (currentUser || attempts > 120) {
+      clearInterval(pwaPollTimer);
+      return;
+    }
+    try {
+      const { data } = await sb.from("pwa_auth_sync").select("user_data").eq("sync_id", syncId).maybeSingle();
+      if (data?.user_data) {
+        clearInterval(pwaPollTimer);
+        const user = data.user_data;
+        currentUser = user;
+
+        sessionStorage.setItem("line_user_id", user.line_user_id);
+        sessionStorage.setItem("line_display_name", user.display_name || "");
+        sessionStorage.setItem("line_db_id", String(user.id));
+        sessionStorage.setItem("line_user_obj", JSON.stringify(user));
+        sessionStorage.removeItem("logged_out");
+
+        localStorage.setItem("line_user_id", user.line_user_id);
+        localStorage.setItem("line_display_name", user.display_name || "");
+        localStorage.setItem("line_db_id", String(user.id));
+        localStorage.setItem("line_user_obj", JSON.stringify(user));
+        localStorage.setItem("line_auth_time", Date.now().toString());
+        localStorage.removeItem("logged_out");
+        localStorage.removeItem("guest_mode");
+        localStorage.removeItem("pwa_sync_id");
+
+        try {
+          await sb.from("pwa_auth_sync").delete().eq("sync_id", syncId);
+        } catch (_) {}
+
+        updateAuthUI();
+        await hydrateAccounts();
+        render();
+        toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
+      }
+    } catch (_) {}
+  }, 1500);
+}
+
+// Sign in with LINE (LIFF with PWA cross-context persistence & Supabase cloud sync)
 function signInWithLine() {
   // Clear guest mode and logout flag if switching to LINE login
   localStorage.removeItem("guest_mode");
@@ -408,7 +457,17 @@ function signInWithLine() {
     return;
   }
 
-  const redirectUri = window.location.origin + window.location.pathname;
+  // Generate a sync ID so the Home Screen app can receive the session from Safari
+  const syncId = "pwa_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 8);
+  try {
+    localStorage.setItem("pwa_sync_id", syncId);
+    sessionStorage.setItem("pwa_sync_id", syncId);
+  } catch (_) {}
+
+  // Start background sync listener in this window (especially for PWA WebClip)
+  startPwaAuthPolling(syncId);
+
+  const redirectUri = window.location.origin + window.location.pathname + "?pwa_sync=" + syncId;
 
   // 1) If LIFF is ready, trigger liff.login (handles PKCE state properly)
   if (liffReady && window.liff) {
@@ -459,6 +518,19 @@ async function handleLiffLogin() {
     localStorage.setItem("line_auth_time", Date.now().toString());
     localStorage.removeItem("logged_out");
     localStorage.removeItem("guest_mode");
+
+    // Sync session to cloud for PWA standalone window (if opened via ?pwa_sync=...)
+    const urlSyncId = new URLSearchParams(window.location.search).get("pwa_sync") || sessionStorage.getItem("pwa_sync_id") || localStorage.getItem("pwa_sync_id");
+    if (urlSyncId && sb) {
+      try {
+        await sb.from("pwa_auth_sync").upsert({
+          sync_id: urlSyncId,
+          user_data: user,
+        });
+      } catch (e) {
+        console.warn("Save PWA sync error:", e);
+      }
+    }
 
     // Clear URL query parameters from LINE redirect
     if (window.location.search) {
@@ -1357,6 +1429,43 @@ async function checkAndSyncAuthState() {
     await hydrateAccounts();
     render();
     return;
+  }
+
+  // Check pending cloud sync from Safari for standalone iOS WebClip
+  const syncId = localStorage.getItem("pwa_sync_id") || sessionStorage.getItem("pwa_sync_id");
+  if (syncId && sb) {
+    try {
+      const { data } = await sb.from("pwa_auth_sync").select("user_data").eq("sync_id", syncId).maybeSingle();
+      if (data?.user_data) {
+        const user = data.user_data;
+        currentUser = user;
+
+        sessionStorage.setItem("line_user_id", user.line_user_id);
+        sessionStorage.setItem("line_display_name", user.display_name || "");
+        sessionStorage.setItem("line_db_id", String(user.id));
+        sessionStorage.setItem("line_user_obj", JSON.stringify(user));
+        sessionStorage.removeItem("logged_out");
+
+        localStorage.setItem("line_user_id", user.line_user_id);
+        localStorage.setItem("line_display_name", user.display_name || "");
+        localStorage.setItem("line_db_id", String(user.id));
+        localStorage.setItem("line_user_obj", JSON.stringify(user));
+        localStorage.setItem("line_auth_time", Date.now().toString());
+        localStorage.removeItem("logged_out");
+        localStorage.removeItem("guest_mode");
+        localStorage.removeItem("pwa_sync_id");
+
+        try {
+          await sb.from("pwa_auth_sync").delete().eq("sync_id", syncId);
+        } catch (_) {}
+
+        updateAuthUI();
+        await hydrateAccounts();
+        render();
+        toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
+        return;
+      }
+    } catch (_) {}
   }
 
   // If LIFF is ready, check if user is logged in
