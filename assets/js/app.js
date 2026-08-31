@@ -395,11 +395,12 @@ function getLineOAuthUrl() {
   return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
 }
 
-// Sign in with LINE (LIFF / OAuth Fallback for iOS Standalone)
+// Sign in with LINE (LIFF with PWA cross-context persistence)
 function signInWithLine() {
   // Clear guest mode and logout flag if switching to LINE login
   localStorage.removeItem("guest_mode");
   sessionStorage.removeItem("logged_out");
+  localStorage.removeItem("logged_out");
 
   // If already logged in via LIFF
   if (liffReady && window.liff && window.liff.isLoggedIn()) {
@@ -407,38 +408,30 @@ function signInWithLine() {
     return;
   }
 
-  // 1) Standalone Mode (iOS Web App / PWA added to Home Screen):
-  // Avoid liff.login() app-switching to prevent freezing/session loss in standalone container
-  if (isStandaloneMode()) {
-    window.location.href = getLineOAuthUrl();
-    return;
-  }
+  const redirectUri = window.location.origin + window.location.pathname;
 
-  // 2) Normal browser with LIFF ready
+  // 1) If LIFF is ready, trigger liff.login (handles PKCE state properly)
   if (liffReady && window.liff) {
-    window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
+    window.liff.login({ redirectUri });
     return;
   }
 
-  // 3) LIFF SDK missing
+  // 2) If LIFF SDK not loaded
   if (!window.liff) {
     window.location.href = getLineOAuthUrl();
     return;
   }
 
-  // 4) LIFF not initialized yet — try initializing first
+  // 3) LIFF not initialized yet — initialize first, then login
   toast("กำลังเชื่อมต่อ LINE...");
   initLiff().then((ok) => {
-    if (ok) {
+    if (ok && window.liff) {
       if (window.liff.isLoggedIn()) {
         handleLiffLogin();
-      } else if (isStandaloneMode()) {
-        window.location.href = getLineOAuthUrl();
       } else {
-        window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
+        window.liff.login({ redirectUri });
       }
     } else {
-      // Fallback directly to OAuth URL if LIFF init fails
       window.location.href = getLineOAuthUrl();
     }
   });
