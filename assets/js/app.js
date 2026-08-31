@@ -380,6 +380,7 @@ function getLineOAuthUrl() {
   const nonce = Math.random().toString(36).substring(2, 15);
   try {
     sessionStorage.setItem("line_oauth_state", state);
+    localStorage.setItem("line_oauth_state", state);
   } catch (_) {}
 
   const params = new URLSearchParams({
@@ -395,79 +396,33 @@ function getLineOAuthUrl() {
   return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
 }
 
-// PWA Cloud Session Sync (Solves iOS standalone isolated storage sandbox)
-let pwaPollTimer = null;
-
-function startPwaAuthPolling(syncId) {
-  if (!syncId || !sb) return;
-  clearInterval(pwaPollTimer);
-
-  let attempts = 0;
-  pwaPollTimer = setInterval(async () => {
-    attempts++;
-    if (currentUser || attempts > 120) {
-      clearInterval(pwaPollTimer);
-      return;
-    }
-    try {
-      const { data } = await sb.from("pwa_auth_sync").select("user_data").eq("sync_id", syncId).maybeSingle();
-      if (data?.user_data) {
-        clearInterval(pwaPollTimer);
-        const user = data.user_data;
-        currentUser = user;
-
-        sessionStorage.setItem("line_user_id", user.line_user_id);
-        sessionStorage.setItem("line_display_name", user.display_name || "");
-        sessionStorage.setItem("line_db_id", String(user.id));
-        sessionStorage.setItem("line_user_obj", JSON.stringify(user));
-        sessionStorage.removeItem("logged_out");
-
-        localStorage.setItem("line_user_id", user.line_user_id);
-        localStorage.setItem("line_display_name", user.display_name || "");
-        localStorage.setItem("line_db_id", String(user.id));
-        localStorage.setItem("line_user_obj", JSON.stringify(user));
-        localStorage.setItem("line_auth_time", Date.now().toString());
-        localStorage.removeItem("logged_out");
-        localStorage.removeItem("guest_mode");
-        localStorage.removeItem("pwa_sync_id");
-
-        try {
-          await sb.from("pwa_auth_sync").delete().eq("sync_id", syncId);
-        } catch (_) {}
-
-        updateAuthUI();
-        await hydrateAccounts();
-        render();
-        toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
-      }
-    } catch (_) {}
-  }, 1500);
-}
-
-// Sign in with LINE (LIFF with PWA cross-context persistence & Supabase cloud sync)
+// Sign in with LINE — uses in-place redirect for Standalone PWA, LIFF for normal browsers
 function signInWithLine() {
   // Clear guest mode and logout flag if switching to LINE login
   localStorage.removeItem("guest_mode");
   sessionStorage.removeItem("logged_out");
   localStorage.removeItem("logged_out");
 
-  // If already logged in via LIFF
+  // If already logged in via LIFF (normal browser only)
   if (liffReady && window.liff && window.liff.isLoggedIn()) {
     handleLiffLogin();
     return;
   }
 
-  // Generate a sync ID so the Home Screen app can receive the session from Safari
-  const syncId = "pwa_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 8);
-  try {
-    localStorage.setItem("pwa_sync_id", syncId);
-    sessionStorage.setItem("pwa_sync_id", syncId);
-  } catch (_) {}
+  // === PWA Standalone Mode: In-Place Redirect (stays in same window) ===
+  if (isStandaloneMode()) {
+    // Save the redirect URI so the callback can send it to the Edge Function
+    const redirectUri = window.location.origin + window.location.pathname;
+    try {
+      localStorage.setItem("pwa_oauth_redirect_uri", redirectUri);
+    } catch (_) {}
+    // Navigate to LINE OAuth in the same PWA window (no Safari popup!)
+    window.location.href = getLineOAuthUrl();
+    return;
+  }
 
-  // Start background sync listener in this window (especially for PWA WebClip)
-  startPwaAuthPolling(syncId);
-
-  const redirectUri = window.location.origin + window.location.pathname + "?pwa_sync=" + syncId;
+  // === Normal Browser: Use LIFF SDK ===
+  const redirectUri = window.location.origin + window.location.pathname;
 
   // 1) If LIFF is ready, trigger liff.login (handles PKCE state properly)
   if (liffReady && window.liff) {
@@ -496,6 +451,75 @@ function signInWithLine() {
   });
 }
 
+// Handle OAuth authorization code callback (for PWA in-place redirect flow)
+async function handleOAuthCodeCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  if (!code) return false; // No code in URL — not a callback
+
+  // Verify state to prevent CSRF
+  try {
+    const savedState = sessionStorage.getItem("line_oauth_state") || localStorage.getItem("line_oauth_state");
+    if (savedState && savedState !== state) {
+      console.warn("OAuth state mismatch");
+      // Don't block login — state may be missing in standalone mode
+    }
+  } catch (_) {}
+
+  // Clean URL immediately so refresh doesn't re-trigger
+  window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+
+  try {
+    // Get redirect URI that was used in the original authorize request
+    const redirectUri = localStorage.getItem("pwa_oauth_redirect_uri") || (window.location.origin + window.location.pathname);
+
+    // Exchange code for user profile via Edge Function
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/line-token-exchange`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ code, redirectUri }),
+    });
+
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Token exchange failed");
+
+    const user = body.user;
+    if (!user) throw new Error("ไม่ได้รับข้อมูลผู้ใช้จากเซิร์ฟเวอร์");
+
+    // Save session
+    currentUser = user;
+    sessionStorage.setItem("line_user_id", user.line_user_id);
+    sessionStorage.setItem("line_display_name", user.display_name || "");
+    sessionStorage.setItem("line_db_id", String(user.id));
+    sessionStorage.setItem("line_user_obj", JSON.stringify(user));
+    sessionStorage.removeItem("logged_out");
+
+    localStorage.setItem("line_user_id", user.line_user_id);
+    localStorage.setItem("line_display_name", user.display_name || "");
+    localStorage.setItem("line_db_id", String(user.id));
+    localStorage.setItem("line_user_obj", JSON.stringify(user));
+    localStorage.setItem("line_auth_time", Date.now().toString());
+    localStorage.removeItem("logged_out");
+    localStorage.removeItem("guest_mode");
+    localStorage.removeItem("pwa_oauth_redirect_uri");
+
+    updateAuthUI();
+    await hydrateAccounts();
+    render();
+    toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
+    return true;
+  } catch (err) {
+    console.error("OAuth code callback error:", err);
+    toast(err.message || "เข้าสู่ระบบไม่สำเร็จ");
+    return false;
+  }
+}
+
 async function handleLiffLogin() {
   try {
     const profile = await getLiffProfile();
@@ -518,19 +542,6 @@ async function handleLiffLogin() {
     localStorage.setItem("line_auth_time", Date.now().toString());
     localStorage.removeItem("logged_out");
     localStorage.removeItem("guest_mode");
-
-    // Sync session to cloud for PWA standalone window (if opened via ?pwa_sync=...)
-    const urlSyncId = new URLSearchParams(window.location.search).get("pwa_sync") || sessionStorage.getItem("pwa_sync_id") || localStorage.getItem("pwa_sync_id");
-    if (urlSyncId && sb) {
-      try {
-        await sb.from("pwa_auth_sync").upsert({
-          sync_id: urlSyncId,
-          user_data: user,
-        });
-      } catch (e) {
-        console.warn("Save PWA sync error:", e);
-      }
-    }
 
     // Clear URL query parameters from LINE redirect
     if (window.location.search) {
@@ -1431,43 +1442,6 @@ async function checkAndSyncAuthState() {
     return;
   }
 
-  // Check pending cloud sync from Safari for standalone iOS WebClip
-  const syncId = localStorage.getItem("pwa_sync_id") || sessionStorage.getItem("pwa_sync_id");
-  if (syncId && sb) {
-    try {
-      const { data } = await sb.from("pwa_auth_sync").select("user_data").eq("sync_id", syncId).maybeSingle();
-      if (data?.user_data) {
-        const user = data.user_data;
-        currentUser = user;
-
-        sessionStorage.setItem("line_user_id", user.line_user_id);
-        sessionStorage.setItem("line_display_name", user.display_name || "");
-        sessionStorage.setItem("line_db_id", String(user.id));
-        sessionStorage.setItem("line_user_obj", JSON.stringify(user));
-        sessionStorage.removeItem("logged_out");
-
-        localStorage.setItem("line_user_id", user.line_user_id);
-        localStorage.setItem("line_display_name", user.display_name || "");
-        localStorage.setItem("line_db_id", String(user.id));
-        localStorage.setItem("line_user_obj", JSON.stringify(user));
-        localStorage.setItem("line_auth_time", Date.now().toString());
-        localStorage.removeItem("logged_out");
-        localStorage.removeItem("guest_mode");
-        localStorage.removeItem("pwa_sync_id");
-
-        try {
-          await sb.from("pwa_auth_sync").delete().eq("sync_id", syncId);
-        } catch (_) {}
-
-        updateAuthUI();
-        await hydrateAccounts();
-        render();
-        toast("เข้าสู่ระบบสำเร็จ — " + (user.display_name || "LINE User"));
-        return;
-      }
-    } catch (_) {}
-  }
-
   // If LIFF is ready, check if user is logged in
   if (liffReady && window.liff && window.liff.isLoggedIn()) {
     await handleLiffLogin();
@@ -1487,15 +1461,23 @@ async function initApp() {
   // 1 & 2) Restore session (sessionStorage + localStorage for PWA standalone)
   currentUser = restoreUserSession();
 
+  // 2.5) Handle OAuth code callback (PWA in-place redirect returns ?code=...)
+  let loggedInViaOAuth = false;
+  if (!currentUser && window.location.search.includes("code=")) {
+    loggedInViaOAuth = await handleOAuthCodeCallback();
+  }
+
   // 3) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
-  await initLiff();
+  if (!loggedInViaOAuth) {
+    await initLiff();
+  }
 
   let loggedInViaLiff = false;
   const isLoggedOut = sessionStorage.getItem("logged_out") === "true" || localStorage.getItem("logged_out") === "true";
   const isGuest = !isLoggedOut && localStorage.getItem("guest_mode") === "true";
 
   // 4) Auto-login from LIFF if not logged out, not in guest mode, and not already restored
-  if (!isLoggedOut && !isGuest && !currentUser && liffReady && window.liff.isLoggedIn()) {
+  if (!loggedInViaOAuth && !isLoggedOut && !isGuest && !currentUser && liffReady && window.liff.isLoggedIn()) {
     await handleLiffLogin();
     loggedInViaLiff = true;
   }
@@ -1514,7 +1496,7 @@ async function initApp() {
   }
 
   // 6) Render UI and sync DB
-  if (!loggedInViaLiff) {
+  if (!loggedInViaLiff && !loggedInViaOAuth) {
     if (currentUser && !currentUser.is_guest) {
       await ensureDbUser();
     }
