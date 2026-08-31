@@ -308,6 +308,8 @@ async function ensureDbUser() {
         currentUser = { ...currentUser, ...data, id: Number(data.id) };
         sessionStorage.setItem("line_db_id", String(data.id));
         sessionStorage.setItem("line_user_obj", JSON.stringify(currentUser));
+        localStorage.setItem("line_db_id", String(data.id));
+        localStorage.setItem("line_user_obj", JSON.stringify(currentUser));
         return currentUser;
       }
     } catch (err) {
@@ -456,6 +458,13 @@ async function handleLiffLogin() {
     sessionStorage.setItem("line_db_id", String(user.id));
     sessionStorage.setItem("line_user_obj", JSON.stringify(user));
     sessionStorage.removeItem("logged_out");
+
+    localStorage.setItem("line_user_id", user.line_user_id);
+    localStorage.setItem("line_display_name", user.display_name || "");
+    localStorage.setItem("line_db_id", String(user.id));
+    localStorage.setItem("line_user_obj", JSON.stringify(user));
+    localStorage.setItem("line_auth_time", Date.now().toString());
+    localStorage.removeItem("logged_out");
     localStorage.removeItem("guest_mode");
 
     // Clear URL query parameters from LINE redirect
@@ -485,11 +494,17 @@ function loginAsGuest() {
   };
 
   localStorage.setItem("guest_mode", "true");
+  localStorage.removeItem("logged_out");
   sessionStorage.removeItem("logged_out");
   sessionStorage.removeItem("line_user_id");
   sessionStorage.removeItem("line_display_name");
   sessionStorage.removeItem("line_db_id");
   sessionStorage.removeItem("line_user_obj");
+  localStorage.removeItem("line_user_id");
+  localStorage.removeItem("line_display_name");
+  localStorage.removeItem("line_db_id");
+  localStorage.removeItem("line_user_obj");
+  localStorage.removeItem("line_auth_time");
 
   hydrateAccounts();
   render();
@@ -504,8 +519,15 @@ async function signOut() {
   sessionStorage.removeItem("line_display_name");
   sessionStorage.removeItem("line_db_id");
   sessionStorage.removeItem("line_user_obj");
-  localStorage.removeItem("guest_mode");
   sessionStorage.setItem("logged_out", "true");
+
+  localStorage.removeItem("guest_mode");
+  localStorage.removeItem("line_user_id");
+  localStorage.removeItem("line_display_name");
+  localStorage.removeItem("line_db_id");
+  localStorage.removeItem("line_user_obj");
+  localStorage.removeItem("line_auth_time");
+  localStorage.setItem("logged_out", "true");
 
   if (window.liff && liffReady) {
     try {
@@ -1290,6 +1312,66 @@ function render() {
 // Init
 // ============================================
 
+function restoreUserSession() {
+  const isLoggedOut = sessionStorage.getItem("logged_out") === "true" || localStorage.getItem("logged_out") === "true";
+  if (isLoggedOut) return null;
+
+  const isGuest = localStorage.getItem("guest_mode") === "true";
+  if (isGuest) {
+    return {
+      id: "guest",
+      line_user_id: "guest_local",
+      display_name: "Guest (ในเครื่อง)",
+      is_guest: true,
+    };
+  }
+
+  // Check sessionStorage first, then fallback to localStorage for PWA standalone persistence
+  const storedUserJson = sessionStorage.getItem("line_user_obj") || localStorage.getItem("line_user_obj");
+  const storedDbId = sessionStorage.getItem("line_db_id") || localStorage.getItem("line_db_id");
+  const storedId = sessionStorage.getItem("line_user_id") || localStorage.getItem("line_user_id");
+
+  if (storedUserJson) {
+    try {
+      const parsed = JSON.parse(storedUserJson);
+      if (parsed && (parsed.line_user_id || parsed.id)) return parsed;
+    } catch (_) {}
+  }
+
+  if (storedId) {
+    const cachedName = sessionStorage.getItem("line_display_name") || localStorage.getItem("line_display_name") || "LINE User";
+    return {
+      id: storedDbId ? Number(storedDbId) : storedId,
+      line_user_id: storedId,
+      display_name: cachedName,
+    };
+  }
+
+  return null;
+}
+
+// Sync session when app regains focus or returns from OAuth in-app browser
+async function checkAndSyncAuthState() {
+  if (currentUser) return; // Already logged in
+
+  const restored = restoreUserSession();
+  if (restored) {
+    currentUser = restored;
+    if (!currentUser.is_guest) {
+      await ensureDbUser();
+    }
+    updateAuthUI();
+    await hydrateAccounts();
+    render();
+    return;
+  }
+
+  // If LIFF is ready, check if user is logged in
+  if (liffReady && window.liff && window.liff.isLoggedIn()) {
+    await handleLiffLogin();
+  }
+}
+
 async function initApp() {
   // Wire up header buttons
   document.getElementById("lineLoginBtn")?.addEventListener("click", signInWithLine);
@@ -1300,42 +1382,16 @@ async function initApp() {
   document.getElementById("upgradeBtn")?.addEventListener("click", startStripeCheckout);
   document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", cancelStripeSubscription);
 
-  // 1) Check logout state and Guest mode
-  const isLoggedOut = sessionStorage.getItem("logged_out") === "true";
-  const isGuest = !isLoggedOut && localStorage.getItem("guest_mode") === "true";
-  if (isGuest) {
-    currentUser = {
-      id: "guest",
-      line_user_id: "guest_local",
-      display_name: "Guest (ในเครื่อง)",
-      is_guest: true,
-    };
-  } else if (!isLoggedOut) {
-    // 2) Restore LINE session from sessionStorage
-    const storedUserJson = sessionStorage.getItem("line_user_obj");
-    const storedDbId = sessionStorage.getItem("line_db_id");
-    const storedId = sessionStorage.getItem("line_user_id");
-    if (storedUserJson) {
-      try {
-        currentUser = JSON.parse(storedUserJson);
-      } catch (_) {
-        currentUser = null;
-      }
-    }
-    if (!currentUser && storedId) {
-      const cachedName = sessionStorage.getItem("line_display_name") || "LINE User";
-      currentUser = {
-        id: storedDbId ? Number(storedDbId) : storedId,
-        line_user_id: storedId,
-        display_name: cachedName,
-      };
-    }
-  }
+  // 1 & 2) Restore session (sessionStorage + localStorage for PWA standalone)
+  currentUser = restoreUserSession();
 
   // 3) Init LIFF — MUST happen before any liff.isLoggedIn() / liff.isInClient()
   await initLiff();
 
   let loggedInViaLiff = false;
+  const isLoggedOut = sessionStorage.getItem("logged_out") === "true" || localStorage.getItem("logged_out") === "true";
+  const isGuest = !isLoggedOut && localStorage.getItem("guest_mode") === "true";
+
   // 4) Auto-login from LIFF if not logged out, not in guest mode, and not already restored
   if (!isLoggedOut && !isGuest && !currentUser && liffReady && window.liff.isLoggedIn()) {
     await handleLiffLogin();
@@ -1368,6 +1424,27 @@ async function initApp() {
   // 7) Timer only updates countdown text (no DOM re-render = no blinking)
   setInterval(updateCountdowns, 1000);
 }
+
+// Re-check authentication state when app regains focus or returns from iOS in-app browser
+window.addEventListener("storage", (e) => {
+  if (e.key === "line_user_obj" || e.key === "line_auth_time" || e.key === "line_user_id" || e.key === "guest_mode") {
+    checkAndSyncAuthState();
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    checkAndSyncAuthState();
+  }
+});
+
+window.addEventListener("focus", () => {
+  checkAndSyncAuthState();
+});
+
+window.addEventListener("pageshow", () => {
+  checkAndSyncAuthState();
+});
 
 // Boot
 initApp();
