@@ -358,34 +358,86 @@ async function ensureUserInDB(profile) {
   return null;
 }
 
-// Sign in with LINE (LIFF)
-function signInWithLine() {
-  if (!window.liff) {
-    toast("ไม่พบ LINE SDK — กรุณารีเฟรชหน้า");
-    return;
+// Standalone / PWA detection (especially for iOS Web App added to Home Screen)
+function isStandaloneMode() {
+  try {
+    return Boolean(
+      window.navigator.standalone ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    );
+  } catch (_) {
+    return false;
   }
+}
 
+// Generate direct LINE OAuth 2.1 authorization URL
+function getLineOAuthUrl() {
+  const channelId = LIFF_ID ? LIFF_ID.split("-")[0] : "2011183218";
+  const redirectUri = window.location.origin + window.location.pathname;
+  const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const nonce = Math.random().toString(36).substring(2, 15);
+  try {
+    sessionStorage.setItem("line_oauth_state", state);
+  } catch (_) {}
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: channelId,
+    redirect_uri: redirectUri,
+    state: state,
+    scope: "profile openid email",
+    nonce: nonce,
+    disable_auto_login: "true",
+  });
+
+  return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
+}
+
+// Sign in with LINE (LIFF / OAuth Fallback for iOS Standalone)
+function signInWithLine() {
   // Clear guest mode and logout flag if switching to LINE login
   localStorage.removeItem("guest_mode");
   sessionStorage.removeItem("logged_out");
 
-  // LIFF is ready
-  if (liffReady) {
-    if (window.liff.isLoggedIn()) {
-      handleLiffLogin();
-    } else {
-      window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
-    }
+  // If already logged in via LIFF
+  if (liffReady && window.liff && window.liff.isLoggedIn()) {
+    handleLiffLogin();
     return;
   }
 
-  // LIFF not initialized yet — try now
+  // 1) Standalone Mode (iOS Web App / PWA added to Home Screen):
+  // Avoid liff.login() app-switching to prevent freezing/session loss in standalone container
+  if (isStandaloneMode()) {
+    window.location.href = getLineOAuthUrl();
+    return;
+  }
+
+  // 2) Normal browser with LIFF ready
+  if (liffReady && window.liff) {
+    window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
+    return;
+  }
+
+  // 3) LIFF SDK missing
+  if (!window.liff) {
+    window.location.href = getLineOAuthUrl();
+    return;
+  }
+
+  // 4) LIFF not initialized yet — try initializing first
   toast("กำลังเชื่อมต่อ LINE...");
   initLiff().then((ok) => {
     if (ok) {
-      signInWithLine();
+      if (window.liff.isLoggedIn()) {
+        handleLiffLogin();
+      } else if (isStandaloneMode()) {
+        window.location.href = getLineOAuthUrl();
+      } else {
+        window.liff.login({ redirectUri: window.location.origin + window.location.pathname });
+      }
     } else {
-      toast("ไม่สามารถเชื่อมต่อ LINE LIFF ได้");
+      // Fallback directly to OAuth URL if LIFF init fails
+      window.location.href = getLineOAuthUrl();
     }
   });
 }
@@ -1291,7 +1343,7 @@ async function initApp() {
   }
 
   // 5) Clean URL params if returning from LINE Login (e.g. ?code=...&state=...)
-  if (window.location.search && (window.location.search.includes("code=") || window.location.search.includes("liffClientId="))) {
+  if (window.location.search && (window.location.search.includes("code=") || window.location.search.includes("state=") || window.location.search.includes("liffClientId="))) {
     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
   }
 
