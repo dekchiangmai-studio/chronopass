@@ -1463,7 +1463,7 @@ async function initApp() {
 
   // 2.5) Handle OAuth code callback (PWA in-place redirect returns ?code=...)
   let loggedInViaOAuth = false;
-  if (!currentUser && window.location.search.includes("code=")) {
+  if (!currentUser && isStandaloneMode() && window.location.search.includes("code=")) {
     loggedInViaOAuth = await handleOAuthCodeCallback();
   }
 

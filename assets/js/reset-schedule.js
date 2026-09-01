@@ -40,10 +40,11 @@
     }
     if (mode === "monthlyFromUse") return addBangkokMonths(ref, 1, schedule?.resetTime);
     if (mode === "monthly") {
-      const current = bangkokParts(now);
+      const refTime = lastUsed ? new Date(lastUsed) : new Date(now);
+      const used = bangkokParts(refTime);
       const day = Math.min(31, Math.max(1, Number(schedule?.resetDay) || 1));
-      let candidate = bangkokDate(current.year, current.month, Math.min(day, daysInMonth(current.year, current.month)), schedule?.resetTime);
-      if (candidate.getTime() <= now) candidate = addBangkokMonths(candidate, 1, schedule?.resetTime);
+      let candidate = bangkokDate(used.year, used.month, Math.min(day, daysInMonth(used.year, used.month)), schedule?.resetTime);
+      if (candidate.getTime() <= refTime.getTime()) candidate = addBangkokMonths(candidate, 1, schedule?.resetTime);
       return candidate;
     }
     return new Date(ref.getTime() + 60 * 60 * 1000);
