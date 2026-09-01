@@ -4,7 +4,7 @@
 
 ## เวอร์ชัน
 
-เวอร์ชัน Frontend ปัจจุบัน: **v1.1.1**
+เวอร์ชัน Frontend ปัจจุบัน: **v1.1.2**
 
 เมื่อมีการแก้ไข Frontend ที่ผู้ใช้มองเห็นหรือเปลี่ยนพฤติกรรม ให้ทำในชุดเดียวกัน:
 
@@ -28,6 +28,7 @@
 | `v1.0.6` | Dashboard summary layout | แสดงสัดส่วนพร้อมใช้ต่อบัญชีทั้งหมด ตัดสรุปใช้แล้ว และย้ายข่าวอัปเดตไว้เหนือการ์ดสรุป                                        |
 | `v1.1.0` | Data reliability         | เพิ่มการซิงค์พร้อมสถานะล่าสุด ยืนยันการลบ ตั้งรอบรีเซ็ตเอง และชุดทดสอบ reset schedule                                         |
 | `v1.1.1` | iOS PWA Login Fix        | ตรวจจับ iOS Standalone Mode และสลับไปใช้ LINE OAuth URL Direct เพื่อแก้ปัญหาล็อกอินค้างบน iPhone Home Screen                 |
+| `v1.1.2` | Reset & Login Fix        | แก้ไขการคำนวณ Copilot reset รายเดือนให้อิง lastUsed และแก้ข้อผิดพลาด code_verifier does not match บนเว็บเบราว์เซอร์           |
 
 รายละเอียดครบทุกส่วนของโปรเจกต์ดูได้ที่ [`../CHANGELOG.md`](../CHANGELOG.md)
 
